@@ -1,0 +1,17 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - backend/.env
+    environment:
+      # Persisted SQLite inside the volume; switch to postgresql+asyncpg://... for scale
+      DATABASE_URL: sqlite+aiosqlite:////app/backend/data/app.db
+      FRONTEND_URL: http://localhost:8000
+    volumes:
+      - rankpilot-data:/app/backend/data
+    restart: unless-stopped
+
+volumes:
+  rankpilot-data:

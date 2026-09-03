@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ subject }}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f6fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f6fb;padding:24px 0;">
+<tr><td align="center">
+<table role="presentation" width="640" cellspacing="0" cellpadding="0" style="max-width:640px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(16,24,40,.06);">
+  <tr>
+    <td style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:28px 32px;color:#fff;">
+      <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;opacity:.85;">{{ app_name }} · {{ period_label }} report</div>
+      <div style="font-size:24px;font-weight:700;margin-top:6px;">{{ website.name or website.domain }}</div>
+      <div style="font-size:13px;opacity:.9;margin-top:2px;">{{ website.url }} · generated {{ generated_at }}</div>
+    </td>
+  </tr>
+
+  <tr><td style="padding:28px 32px 8px;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+      <tr>
+        <td width="40%" valign="top" style="padding-right:16px;">
+          <div style="border:1px solid #e5e7eb;border-radius:12px;padding:18px;text-align:center;">
+            <div style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;">Overall health</div>
+            <div style="font-size:44px;font-weight:800;color:{{ score_color(overall) }};line-height:1.1;margin-top:6px;">{{ overall|default('–') }}</div>
+            <div style="font-size:12px;color:#6b7280;">out of 100</div>
+            {% if delta is not none %}
+            <div style="margin-top:8px;font-size:13px;font-weight:600;color:{{ '#059669' if delta >= 0 else '#dc2626' }};">
+              {{ '+' if delta >= 0 else '' }}{{ delta }} vs previous audit
+            </div>
+            {% endif %}
+          </div>
+        </td>
+        <td width="60%" valign="top">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="font-size:13px;">
+            {% for label, val in categories %}
+            <tr>
+              <td style="padding:5px 0;color:#374151;width:46%;">{{ label }}</td>
+              <td style="padding:5px 0;">
+                <div style="background:#eef2ff;border-radius:6px;height:10px;overflow:hidden;">
+                  <div style="width:{{ (val or 0)|int }}%;height:10px;background:{{ score_color(val) }};"></div>
+                </div>
+              </td>
+              <td style="padding:5px 0 5px 10px;text-align:right;font-weight:600;color:#111827;width:40px;">{{ val if val is not none else '–' }}</td>
+            </tr>
+            {% endfor %}
+          </table>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+
+  {% if executive_summary %}
+  <tr><td style="padding:16px 32px 0;">
+    <div style="font-size:15px;font-weight:700;margin-bottom:6px;">Executive summary</div>
+    <div style="font-size:14px;line-height:1.6;color:#374151;">{{ executive_summary }}</div>
+  </td></tr>
+  {% endif %}
+
+  <tr><td style="padding:22px 32px 0;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="font-size:13px;text-align:center;">
+      <tr>
+        {% for label, val in stats %}
+        <td style="padding:12px 6px;background:#f9fafb;border-radius:10px;{% if not loop.last %}border-right:6px solid #fff;{% endif %}">
+          <div style="font-size:20px;font-weight:800;color:#111827;">{{ val }}</div>
+          <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">{{ label }}</div>
+        </td>
+        {% endfor %}
+      </tr>
+    </table>
+  </td></tr>
+
+  {% if top_issues %}
+  <tr><td style="padding:24px 32px 0;">
+    <div style="font-size:15px;font-weight:700;margin-bottom:8px;">Top issues to fix</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="font-size:13px;border-collapse:collapse;">
+      {% for i in top_issues %}
+      <tr style="border-top:1px solid #f1f5f9;">
+        <td style="padding:9px 8px 9px 0;width:70px;vertical-align:top;">
+          <span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;color:#fff;background:{{ severity_color(i.severity) }};">{{ i.severity }}</span>
+        </td>
+        <td style="padding:9px 0;vertical-align:top;">
+          <div style="font-weight:600;color:#111827;">{{ i.title }}</div>
+          {% if i.recommendation %}<div style="color:#4b5563;margin-top:2px;">{{ i.recommendation }}</div>{% endif %}
+          {% if i.page_url %}<div style="color:#9ca3af;font-size:11px;margin-top:2px;word-break:break-all;">{{ i.page_url }}</div>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </td></tr>
+  {% endif %}
+
+  {% if keywords %}
+  <tr><td style="padding:24px 32px 0;">
+    <div style="font-size:15px;font-weight:700;margin-bottom:8px;">Keyword rankings (Google)</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="font-size:13px;border-collapse:collapse;">
+      <tr style="color:#6b7280;font-size:11px;text-transform:uppercase;letter-spacing:.05em;">
+        <td style="padding:6px 0;">Keyword</td><td style="padding:6px 0;text-align:right;">Position</td><td style="padding:6px 0;text-align:right;">Change</td>
+      </tr>
+      {% for k in keywords %}
+      <tr style="border-top:1px solid #f1f5f9;">
+        <td style="padding:8px 0;color:#111827;">{{ k.term }}{% if k.location %} <span style="color:#9ca3af;">· {{ k.location }}</span>{% endif %}</td>
+        <td style="padding:8px 0;text-align:right;font-weight:600;">{{ k.latest_position if k.latest_position else ('–' if k.last_checked_at is none else '100+') }}</td>
+        <td style="padding:8px 0;text-align:right;font-weight:600;color:{{ '#059669' if k.change and k.change > 0 else ('#dc2626' if k.change and k.change < 0 else '#6b7280') }};">
+          {% if k.change is none %}–{% elif k.change > 0 %}▲ {{ k.change }}{% elif k.change < 0 %}▼ {{ -k.change }}{% else %}=<!-- --> {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% if rank_note %}<div style="font-size:11px;color:#9ca3af;margin-top:6px;">{{ rank_note }}</div>{% endif %}
+  </td></tr>
+  {% endif %}
+
+  {% if tasks_done or tasks_open %}
+  <tr><td style="padding:24px 32px 0;">
+    <div style="font-size:15px;font-weight:700;margin-bottom:8px;">Work progress</div>
+    <div style="font-size:13px;color:#374151;">
+      <strong style="color:#059669;">{{ tasks_done|length }}</strong> tasks completed this period,
+      <strong style="color:#d97706;">{{ tasks_open|length }}</strong> still open.
+    </div>
+    {% if tasks_done %}
+    <ul style="font-size:13px;color:#374151;padding-left:18px;margin:8px 0 0;">
+      {% for t in tasks_done[:6] %}<li style="margin:3px 0;">✅ {{ t.title }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% if tasks_open %}
+    <ul style="font-size:13px;color:#374151;padding-left:18px;margin:8px 0 0;">
+      {% for t in tasks_open[:6] %}<li style="margin:3px 0;">⬜ <strong>{{ t.priority }}</strong> · {{ t.title }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </td></tr>
+  {% endif %}
+
+  {% if quick_wins %}
+  <tr><td style="padding:24px 32px 0;">
+    <div style="font-size:15px;font-weight:700;margin-bottom:8px;">Recommended next steps</div>
+    <ol style="font-size:13px;color:#374151;padding-left:18px;margin:0;line-height:1.55;">
+      {% for q in quick_wins %}<li style="margin:4px 0;"><strong>{{ q.title }}</strong>{% if q.how %} — {{ q.how }}{% endif %}</li>{% endfor %}
+    </ol>
+  </td></tr>
+  {% endif %}
+
+  <tr><td style="padding:28px 32px;">
+    <a href="{{ dashboard_url }}" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 20px;border-radius:10px;">Open full dashboard →</a>
+  </td></tr>
+
+  <tr><td style="padding:16px 32px 24px;border-top:1px solid #f1f5f9;font-size:11px;color:#9ca3af;line-height:1.5;">
+    You are receiving this because {{ website.domain }} is connected to {{ app_name }} and a {{ frequency }} report is scheduled.
+    Scores are computed from an automated crawl of up to {{ pages_crawled }} pages and are indicative, not a guarantee of rankings.
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>

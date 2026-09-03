@@ -1,0 +1,16 @@
+from app.models.entities import (  # noqa: F401
+    Audit,
+    AuditIssue,
+    AuditPage,
+    Integration,
+    Keyword,
+    KeywordRank,
+    Lead,
+    ReportRun,
+    ReportSchedule,
+    SocialPost,
+    Task,
+    User,
+    Website,
+    Workspace,
+)

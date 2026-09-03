@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
+}
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body { @apply bg-slate-50 text-slate-800 antialiased; }
+}
+
+@layer components {
+  .card { @apply rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(16,24,40,.04)]; }
+
+  .btn, .btn-primary, .btn-secondary, .btn-ghost, .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary { @apply bg-brand-600 text-white hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-300; }
+  .btn-secondary { @apply border border-slate-200 bg-white text-slate-700 hover:bg-slate-50; }
+  .btn-ghost { @apply text-slate-600 hover:bg-slate-100; }
+  .btn-danger { @apply border border-red-200 bg-white text-red-600 hover:bg-red-50; }
+
+  .input { @apply w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100; }
+  .label { @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500; }
+  .badge { @apply inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold; }
+  .nav-link { @apply flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900; }
+  .nav-link.active { @apply bg-brand-50 text-brand-700; }
+  .tab { @apply whitespace-nowrap border-b-2 border-transparent px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-800; }
+  .tab.active { @apply border-brand-600 text-brand-700; }
+}
