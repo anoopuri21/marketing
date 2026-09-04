@@ -67,9 +67,10 @@ backend/
   app/
     api/            # FastAPI routers: auth, websites, audits, keywords, tasks/plan, reports, integrations, social, creatives, leads, misc
     core/           # config, database, security, shared HTTP/TLS helpers
+    core/           # config (+ production guard) · database · security · time (utcnow/aware) · errors (domain errors) · logging (request ids)
     models/         # SQLAlchemy models (users, workspaces, websites, audits, keywords, tasks, reports, integrations, social_posts, leads)
     schemas/        # Pydantic request/response models
-    services/
+    services/       # business logic – no FastAPI imports; raises core.errors, the API maps them to HTTP
       audit/        # crawler.py (async BFS crawler) · analyzers.py (rules + scoring) · engine.py (orchestration)
       ai/           # provider.py (OpenAI/Anthropic) · insights.py (summaries, keywords, plans, social drafts + fallbacks)
       reports/      # generator.py (HTML report) · mailer.py (smtp | file | console)
@@ -77,12 +78,14 @@ backend/
       social/       # publishers.py (FB/IG/LinkedIn/X/webhook) · planner.py (calendar) · service.py (publish + due-post worker)
       creatives/    # renderer.py (Pillow templates) · studio.py (brand kit, AI images, uploads)
       leads/        # sources.py (SerpAPI Maps/Search + demo) · qualifier.py (mini audit → gaps → score) · pitch.py · service.py (pipeline + background worker)
-      rank_tracker.py, scheduler.py, verification.py
+      dashboard.py, rank_tracker.py, scheduler.py, verification.py
     templates/      # report_email.html
-  tests/            # pytest: analyzers, scheduler, API flow, Google integrations, social + creatives, leads (51 tests)
+  pyproject.toml    # ruff + mypy + pytest configuration
+  tests/            # pytest: core, analyzers, scheduler, API flow, Google integrations, social + creatives, leads (58 tests)
 frontend/
-  src/pages/        # Dashboard, connect website, website workspace (Overview · Issues & pages · Keywords · Google data · Plan · Content & social · Leads · Reports · Settings)
-  src/lib/          # typed API client, auth context, helpers
+  src/pages/        # Dashboard, connect website, website workspace (Overview · Issues & pages · Keywords · Google data · Plan · Content & social · Leads · Reports · Settings) – tabs are lazy-loaded chunks
+  src/hooks/        # useSite (website tab context) · useToast
+  src/lib/          # typed API client, auth provider + context, helpers
 scripts/            # setup.sh · dev.sh · seed_demo.sh
 docs/               # ROADMAP.md · ARCHITECTURE.md
 ```
@@ -98,12 +101,17 @@ Issues carry a severity (critical → info). Every category starts at 100 and lo
 diminishing penalties for the same issue repeating across pages. The overall score is a weighted blend of the
 seven categories, **capped when critical issues remain** so a broken site can never look healthy.
 
-## Testing
+## Testing & code quality
 
 ```bash
-cd backend && .venv/bin/python -m pytest -q     # backend (no network needed)
-cd frontend && npm run build                     # type-check + production build
+cd backend && .venv/bin/python -m pytest -q     # backend (no network needed) – 58 tests, 0 warnings
+cd backend && .venv/bin/ruff check app tests     # lint (E,F,W,I,B,UP,SIM,RUF,ASYNC,PL) – 0 findings
+cd backend && .venv/bin/mypy app                 # static types – 0 errors
+cd frontend && npm run lint                      # oxlint incl. React compiler rules – 0 warnings
+cd frontend && npx tsc -b && npm run build       # type-check + production build (code-split)
 ```
+
+`ruff` and `mypy` are installed with `pip install ruff mypy` into `backend/.venv` (not part of the runtime requirements).
 
 ## Production deployment
 

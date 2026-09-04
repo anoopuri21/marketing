@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { Download, ImagePlus, Palette, Sparkles, Trash2, Upload, Wand2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { Alert, Spinner, useToast } from '../../../components/ui'
+import { Alert, Spinner } from '../../../components/ui'
+import { useToast } from '../../../hooks/useToast'
 import { Creatives, errorMessage, type Creative, type CreativeSpec } from '../../../lib/api'
 
 const DEFAULT_SPEC: CreativeSpec = { headline: '', subline: '', cta: '', template: 'bold', size: 'square', accent_words: [] }
@@ -23,8 +24,7 @@ export default function CreativeStudio({ siteId, onPick, initial }: { siteId: nu
   const objectUrl = useRef<string | null>(null)
   const invalidate = () => void qc.invalidateQueries({ queryKey: ['creatives', siteId] })
   useEffect(() => () => { if (objectUrl.current) URL.revokeObjectURL(objectUrl.current) }, [])
-
-  useEffect(() => { if (initial) setSpec((s) => ({ ...s, ...initial })) }, [initial])
+  // `initial` seeds the form once on mount (the studio modal remounts when reopened) – no effect needed.
 
   // live preview (debounced)
   useEffect(() => {

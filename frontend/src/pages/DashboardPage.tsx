@@ -4,7 +4,7 @@ import { ArrowRight, CalendarClock, Globe, Plus, ShieldCheck } from 'lucide-reac
 import { Link } from 'react-router-dom'
 import { EmptyState, PageHeader, ScoreRing, Spinner, Stat } from '../components/ui'
 import { System, Websites } from '../lib/api'
-import { useAuth } from '../lib/auth'
+import { useAuth } from '../lib/authContext'
 import { fmtDateTz, scoreColor, severityStyles, timeAgo, weekdays } from '../lib/utils'
 
 export default function DashboardPage() {

@@ -2,10 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { Eye, Mail, Plus, Send, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { Alert, Modal, Spinner, useToast } from '../../components/ui'
+import { Alert, Modal, Spinner } from '../../components/ui'
+import { useToast } from '../../hooks/useToast'
 import { Reports, System, errorMessage, type ReportSchedule } from '../../lib/api'
 import { fmtDate, fmtDateTz, pad, weekdays } from '../../lib/utils'
-import { useSite } from './WebsiteLayout'
+import { useSite } from '../../hooks/useSite'
 
 type Form = Omit<ReportSchedule, 'id' | 'website_id' | 'next_run_at' | 'last_run_at' | 'created_at'>
 const defaultForm = (): Form => ({

@@ -2,16 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { ExternalLink, Play, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { useEffect, useRef } from 'react'
-import { NavLink, Outlet, useOutletContext, useParams } from 'react-router-dom'
-import { Alert, ScoreRing, Spinner, useToast } from '../../components/ui'
-import { Audits, Websites, errorMessage, type AuditSummary, type Website } from '../../lib/api'
+import { NavLink, Outlet, useParams } from 'react-router-dom'
+import { Alert, ScoreRing, Spinner } from '../../components/ui'
+import { useToast } from '../../hooks/useToast'
+import { Audits, Websites, errorMessage } from '../../lib/api'
 import { timeAgo } from '../../lib/utils'
-
-export interface SiteCtx { site: Website; audits: AuditSummary[]; latestCompleted: AuditSummary | undefined; running: boolean }
-
-export function useSite(): SiteCtx {
-  return useOutletContext<SiteCtx>()
-}
+import type { SiteCtx } from '../../hooks/useSite'
 
 const tabs = [
   { to: '', label: 'Overview', end: true },

@@ -2,10 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { CalendarRange, Check, CheckCircle2, Circle, Plus, Sparkles, Trash2, Undo2, XCircle } from 'lucide-react'
 import { useState } from 'react'
-import { Modal, Spinner, useToast } from '../../components/ui'
+import { Modal, Spinner } from '../../components/ui'
+import { useToast } from '../../hooks/useToast'
 import { Tasks, errorMessage, type Task } from '../../lib/api'
 import { categoryLabels, fmtDate, priorityStyles } from '../../lib/utils'
-import { useSite } from './WebsiteLayout'
+import { useSite } from '../../hooks/useSite'
 
 const COLUMNS: { key: Task['status']; label: string }[] = [
   { key: 'todo', label: 'To do' },

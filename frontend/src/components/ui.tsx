@@ -1,7 +1,8 @@
 import clsx from 'clsx'
 import { AlertCircle, CheckCircle2, Loader2, X } from 'lucide-react'
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { scoreColor, scoreHex } from '../lib/utils'
+import { ToastContext, type ToastKind } from '../hooks/useToast'
 
 // ------------------------------------------------------------ Score ring
 export function ScoreRing({ value, size = 96, stroke = 8, label }: { value: number | null | undefined; size?: number; stroke?: number; label?: string }) {
@@ -113,19 +114,18 @@ export function Alert({ kind = 'info', children }: { kind?: 'info' | 'error' | '
 }
 
 // ------------------------------------------------------------ Toasts
-interface Toast { id: number; kind: 'success' | 'error' | 'info'; message: string }
-const ToastCtx = createContext<{ push: (kind: Toast['kind'], message: string) => void } | null>(null)
+interface Toast { id: number; kind: ToastKind; message: string }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
-  const push = useCallback((kind: Toast['kind'], message: string) => {
+  const push = useCallback((kind: ToastKind, message: string) => {
     const id = Date.now() + Math.random()
     setToasts((t) => [...t, { id, kind, message }])
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4500)
   }, [])
   const value = useMemo(() => ({ push }), [push])
   return (
-    <ToastCtx.Provider value={value}>
+    <ToastContext.Provider value={value}>
       {children}
       <div className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-80 flex-col gap-2">
         {toasts.map((t) => (
@@ -143,14 +143,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           </div>
         ))}
       </div>
-    </ToastCtx.Provider>
+    </ToastContext.Provider>
   )
-}
-
-export function useToast() {
-  const ctx = useContext(ToastCtx)
-  if (!ctx) throw new Error('useToast outside provider')
-  return ctx
 }
 
 export function Badge({ children, className }: { children: ReactNode; className?: string }) {

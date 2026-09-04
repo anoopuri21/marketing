@@ -3,7 +3,7 @@ import clsx from 'clsx'
 import { CheckCircle2, CircleAlert } from 'lucide-react'
 import { PageHeader, Spinner } from '../components/ui'
 import { System } from '../lib/api'
-import { useAuth } from '../lib/auth'
+import { useAuth } from '../lib/authContext'
 
 export default function SettingsPage() {
   const { user, workspaces } = useAuth()

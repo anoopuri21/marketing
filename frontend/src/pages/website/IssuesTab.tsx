@@ -6,7 +6,7 @@ import { useParams } from 'react-router-dom'
 import { EmptyState, Spinner } from '../../components/ui'
 import { Audits, type AuditIssue } from '../../lib/api'
 import { categoryLabels, severityStyles } from '../../lib/utils'
-import { useSite } from './WebsiteLayout'
+import { useSite } from '../../hooks/useSite'
 
 const SEV_ORDER = ['critical', 'high', 'medium', 'low', 'info']
 

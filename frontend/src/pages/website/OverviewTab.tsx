@@ -6,7 +6,7 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { EmptyState, ScoreBar, Spinner } from '../../components/ui'
 import { Audits, Integrations, Tasks, type AnalyticsData, type SearchPerformance } from '../../lib/api'
 import { fmtDate, priorityStyles, severityStyles } from '../../lib/utils'
-import { useSite } from './WebsiteLayout'
+import { useSite } from '../../hooks/useSite'
 
 export default function OverviewTab() {
   const { site, audits, latestCompleted, running } = useSite()
@@ -178,27 +178,31 @@ function GoogleSnapshot({ gsc, ga4, loaded }: { gsc?: SearchPerformance; ga4?: A
   }
   const t = gsc?.summary.totals
   const g = ga4?.summary?.totals
-  const change = (cur: number, prev: number) => (prev ? Math.round(((cur - prev) / prev) * 1000) / 10 : null)
-  const Item = ({ label, value, ch }: { label: string; value: string; ch: number | null }) => (
-    <div className="rounded-xl bg-slate-50 p-3">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="flex items-baseline gap-1.5"><span className="text-lg font-bold text-slate-900">{value}</span>{ch !== null && <span className={clsx('text-[11px] font-semibold', ch >= 0 ? 'text-emerald-600' : 'text-red-500')}>{ch >= 0 ? '+' : ''}{ch}%</span>}</div>
-    </div>
-  )
   return (
     <div className="card p-5">
       <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold text-slate-900">Google · last 28 days</h2><Link to="google" className="text-xs font-semibold text-brand-600">Details →</Link></div>
       <div className="grid grid-cols-2 gap-2">
-        {t && <Item label="Clicks" value={t.clicks.toLocaleString()} ch={change(t.clicks, t.prev_clicks)} />}
-        {t && <Item label="Impressions" value={t.impressions.toLocaleString()} ch={change(t.impressions, t.prev_impressions)} />}
-        {g && <Item label="Sessions" value={g.sessions.toLocaleString()} ch={change(g.sessions, g.prev_sessions)} />}
-        {g && <Item label="Conversions" value={g.conversions.toLocaleString()} ch={change(g.conversions, g.prev_conversions)} />}
-        {t && !g && <Item label="Avg. position" value={String(t.avg_position ?? '–')} ch={null} />}
-        {t && !g && <Item label="CTR" value={`${t.ctr}%`} ch={null} />}
+        {t && <MetricItem label="Clicks" value={t.clicks.toLocaleString()} ch={percentChange(t.clicks, t.prev_clicks)} />}
+        {t && <MetricItem label="Impressions" value={t.impressions.toLocaleString()} ch={percentChange(t.impressions, t.prev_impressions)} />}
+        {g && <MetricItem label="Sessions" value={g.sessions.toLocaleString()} ch={percentChange(g.sessions, g.prev_sessions)} />}
+        {g && <MetricItem label="Conversions" value={g.conversions.toLocaleString()} ch={percentChange(g.conversions, g.prev_conversions)} />}
+        {t && !g && <MetricItem label="Avg. position" value={String(t.avg_position ?? '–')} ch={null} />}
+        {t && !g && <MetricItem label="CTR" value={`${t.ctr}%`} ch={null} />}
       </div>
       {gsc && gsc.opportunities.length > 0 && (
         <div className="mt-3 text-xs text-slate-500"><Sparkles className="mr-1 inline h-3 w-3 text-amber-500" /><b>{gsc.opportunities.length}</b> quick-win queries sit on positions 5-20 · <Link to="google" className="text-brand-600 hover:underline">see them</Link></div>
       )}
+    </div>
+  )
+}
+
+const percentChange = (cur: number, prev: number) => (prev ? Math.round(((cur - prev) / prev) * 1000) / 10 : null)
+
+function MetricItem({ label, value, ch }: { label: string; value: string; ch: number | null }) {
+  return (
+    <div className="rounded-xl bg-slate-50 p-3">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="flex items-baseline gap-1.5"><span className="text-lg font-bold text-slate-900">{value}</span>{ch !== null && <span className={clsx('text-[11px] font-semibold', ch >= 0 ? 'text-emerald-600' : 'text-red-500')}>{ch >= 0 ? '+' : ''}{ch}%</span>}</div>
     </div>
   )
 }

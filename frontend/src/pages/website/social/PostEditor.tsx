@@ -1,31 +1,31 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { CalendarClock, Copy, ImagePlus, Send, Sparkles, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { Alert, Modal, Spinner, useToast } from '../../../components/ui'
-import { Creatives, Social, errorMessage, type Creative, type SocialPost } from '../../../lib/api'
+import { useState } from 'react'
+import { Alert, Modal, Spinner } from '../../../components/ui'
+import { useToast } from '../../../hooks/useToast'
+import { Creatives, Social, errorMessage, type Creative } from '../../../lib/api'
 import CreativeStudio from './CreativeStudio'
-import { PLATFORM_LABELS, PlatformIcon, fromLocalInput, toLocalInput } from './shared'
+import { PLATFORM_LABELS, fromLocalInput } from './constants'
+import type { EditorState } from './editorState'
+import { PlatformIcon } from './shared'
 
-export interface EditorState {
-  id?: number; platform: string; content: string; topic: string; hashtags: string; link_url: string; creative_id: number | null; creative_url: string; scheduled_for: string
+interface PostEditorProps { siteId: number; siteUrl: string; state: EditorState | null; connected: string[]; onClose: () => void }
+
+/** Modal wrapper: remounts the form (via `key`) whenever a different post is opened, so no effect→setState sync is needed. */
+export default function PostEditor({ state, onClose, ...rest }: PostEditorProps) {
+  if (!state) return null
+  return <PostEditorForm key={state.id ?? 'new'} state={state} onClose={onClose} {...rest} />
 }
 
-export const emptyEditor = (platform = 'instagram', siteUrl = ''): EditorState => ({ platform, content: '', topic: '', hashtags: '', link_url: siteUrl, creative_id: null, creative_url: '', scheduled_for: '' })
-
-export function fromPost(p: SocialPost): EditorState {
-  return { id: p.id, platform: p.platform, content: p.content, topic: p.topic, hashtags: p.hashtags.join(' '), link_url: p.link_url, creative_id: p.creative_id, creative_url: p.creative_url, scheduled_for: toLocalInput(p.scheduled_for) }
-}
-
-export default function PostEditor({ siteId, siteUrl, state, connected, onClose }: { siteId: number; siteUrl: string; state: EditorState | null; connected: string[]; onClose: () => void }) {
+function PostEditorForm({ siteId, siteUrl, state, connected, onClose }: PostEditorProps & { state: EditorState }) {
   const qc = useQueryClient()
   const toast = useToast()
-  const [form, setForm] = useState<EditorState>(state ?? emptyEditor())
+  const [form, setForm] = useState<EditorState>(state)
   const [studio, setStudio] = useState(false)
   const [tone, setTone] = useState('friendly')
   const platforms = useQuery({ queryKey: ['social-platforms'], queryFn: Social.platforms, staleTime: Infinity })
-  const library = useQuery({ queryKey: ['creatives', siteId], queryFn: () => Creatives.list(siteId), enabled: !!state })
-  useEffect(() => { if (state) setForm(state) }, [state])
+  const library = useQuery({ queryKey: ['creatives', siteId], queryFn: () => Creatives.list(siteId) })
 
   const invalidate = () => { void qc.invalidateQueries({ queryKey: ['social-posts', siteId] }); void qc.invalidateQueries({ queryKey: ['social-summary', siteId] }) }
   const payload = (status?: 'draft' | 'scheduled') => ({
@@ -59,7 +59,7 @@ export default function PostEditor({ siteId, siteUrl, state, connected, onClose 
   const needsImage = form.platform === 'instagram' && !form.creative_id
 
   return (
-    <Modal open={!!state} onClose={onClose} title={form.id ? 'Edit post' : 'New post'} wide>
+    <Modal open onClose={onClose} title={form.id ? 'Edit post' : 'New post'} wide>
       <div className="grid gap-5 md:grid-cols-5">
         <div className="space-y-3 md:col-span-3">
           <div>

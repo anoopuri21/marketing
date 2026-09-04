@@ -4,10 +4,11 @@ import { AlertTriangle, ArrowDownRight, ArrowUpRight, BarChart3, ExternalLink, M
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Alert, Modal, Spinner, useToast } from '../../components/ui'
+import { Alert, Modal, Spinner } from '../../components/ui'
+import { useToast } from '../../hooks/useToast'
 import { Integrations, errorMessage, type AnalyticsData, type Integration, type IntegrationMeta, type SearchPerformance, type SearchStat } from '../../lib/api'
 import { fmtDate, timeAgo } from '../../lib/utils'
-import { useSite } from './WebsiteLayout'
+import { useSite } from '../../hooks/useSite'
 
 const GSC = 'google_search_console'
 const GA4 = 'ga4'

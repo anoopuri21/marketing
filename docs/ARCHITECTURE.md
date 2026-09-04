@@ -16,6 +16,24 @@
                                                                                     · target websites (crawler)
 ```
 
+## Layers & conventions
+
+```
+app/api/*        HTTP only: auth deps (`DB`, `CurrentUser`, `OwnedWebsite`), pydantic I/O, calls one service, commits.
+app/services/*   Business rules. No FastAPI imports. Raise `app.core.errors` (NotFoundError 404, ValidationError 400,
+                 ConflictError 409, UpstreamError 502) – `main.py` maps them to JSON `{detail, request_id}`.
+app/models       SQLAlchemy entities.            app/schemas   Pydantic response/request models.
+app/core         config (+ production guard), database (`session_scope` for background work), security,
+                 time (`utcnow()`, `aware()`, `is_past()`), errors, logging (request-id middleware).
+```
+
+- **Time**: everything is UTC. SQLite returns naive datetimes → always wrap DB values with `aware()` before comparing.
+- **Errors**: services never raise `HTTPException`; unexpected exceptions become a 500 with a `request_id` (full trace in logs, message hidden in production).
+- **Request ids**: every response carries `X-Request-ID` (incoming header honoured); log lines include it. Requests slower than 2s are logged.
+- **Background work**: use FastAPI `BackgroundTasks` with a service function that opens its own `session_scope()` (e.g. `leads.service.qualify_leads_in_background`), never the request session.
+- **Config safety**: `ENVIRONMENT=production` refuses to boot with the default `SECRET_KEY` (or < 32 chars) or `CORS_ORIGINS=*`.
+- **Quality gates**: `ruff` + `mypy` (backend, `pyproject.toml`), `oxlint` + `tsc` (frontend). All at zero; keep them there.
+
 ## Request flow: "connect a website"
 
 1. `POST /api/websites` normalises the URL, creates the `Website` (with a verification token) and an `Audit(status=queued)`, then schedules `run_audit` as a background task.
@@ -39,7 +57,7 @@ For multi-instance deployments run the scheduler on a single instance (`SCHEDULE
 
 ## Social publishing & creatives
 
-- **Channels** are `Integration` rows (`provider` = facebook | instagram | linkedin | x | webhook) whose `config` holds the credentials; `api/social.py` masks secrets on the way out and `POST …/channels/{platform}/test` performs a lightweight authenticated call.
+- **Channels** are `Integration` rows (`provider` = facebook | instagram | linkedin | x | webhook) whose `config` holds the credentials; `services/social/service.py` (channel upsert/masking, post state machine, calendar persistence) does the work and `api/social.py` is a thin router. `POST …/channels/{platform}/test` calls `publishers.verify_channel()` for a lightweight authenticated call.
 - **Publishers** (`services/social/publishers.py`) are thin REST clients (Graph API v20, LinkedIn `rest/posts`, X v2, signed webhook) sharing `compose_text()` (content + hashtags + link, per-platform limits). Images are passed by URL, so `PUBLIC_BASE_URL` must be reachable by the networks in production.
 - **Planner** (`services/social/planner.py`) builds `{strategy, posts[]}` from website context (industry, location, keyword themes, GSC queries, audit content ideas) — via the LLM when configured, otherwise a deterministic rotation of 10 post types — and `schedule_times()` maps each post to a best-practice local slot starting tomorrow.
 - **Creatives** (`services/creatives/`) — `renderer.py` draws 6 template families with Pillow (word-wrapped, auto-fitted text; brand colours; optional logo) in square / landscape / story sizes; `studio.py` persists `Creative` rows and files under `MEDIA_DIR/creatives/<website_id>/`, handles uploads/logos and OpenAI image generation. Files are served at `/media/...` by the API (`main.py`).
@@ -68,7 +86,7 @@ For multi-instance deployments run the scheduler on a single instance (`SCHEDULE
 
 ## Security notes
 
-- Passwords hashed with bcrypt; JWT (HS256) with `SECRET_KEY` — set a long random value in production.
+- Passwords hashed with bcrypt; JWT (HS256) with `SECRET_KEY` — set a long random value in production (enforced: the app refuses to start in `ENVIRONMENT=production` with the default key or `CORS_ORIGINS=*`).
 - Every website-scoped route resolves the site through the caller's workspace (`OwnedWebsite` dependency) → tenants are isolated.
 - Integration secrets are stored in the DB (JSON) and masked in API responses. Encrypt at rest (KMS / Fernet) before going multi-tenant in production.
 - The crawler identifies itself as `RankPilotBot`, follows redirects, times out per request, and never executes JavaScript.

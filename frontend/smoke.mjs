@@ -6,9 +6,35 @@ import path from 'node:path'
 
 const dist = path.resolve('dist')
 const html = fs.readFileSync(path.join(dist, 'index.html'), 'utf8')
-const jsFile = fs.readdirSync(path.join(dist, 'assets')).find((f) => f.endsWith('.js'))
-let bundle = fs.readFileSync(path.join(dist, 'assets', jsFile), 'utf8')
-bundle = bundle.replace(/import\.meta\.url/g, '"http://localhost:5173/"').replace(/import\.meta\.resolve/g, '(function(x){return x})')
+const entryFile = html.match(/src="\/assets\/([^"]+\.js)"/)[1]
+const prepare = (src) => src.replace(/import\.meta\.url/g, '"http://localhost:5173/"').replace(/import\.meta\.resolve/g, '(function(x){return x})')
+
+// Vite emits real ES modules (code-split chunks). jsdom can't `import()` files, so we evaluate each
+// chunk through a tiny module loader: static imports/exports are rewritten to a `__mods` registry and
+// dynamic `import()`s become lookups – enough for the app bundle which only imports local chunks.
+const cache = new Map()
+function loadModule(window, file) {
+  if (cache.has(file)) return cache.get(file)
+  let src = prepare(fs.readFileSync(path.join(dist, 'assets', file), 'utf8'))
+  const asProp = (names) => names.replace(/([\w$]+)\s+as\s+([\w$]+)/g, '$1: $2')
+  src = src.replace(/import\s*\{([^}]*)\}\s*from\s*["']\.\/([^"']+)["'];?/g, (_, names, f) => `const {${asProp(names)}} = __req("${f}");`)
+  src = src.replace(/import\s+([\w$]+)\s*from\s*["']\.\/([^"']+)["'];?/g, (_, name, f) => `const ${name} = __req("${f}").default;`)
+  src = src.replace(/import\s*["']\.\/([^"']+)["'];?/g, (_, f) => `__req("${f}");`)
+  src = src.replace(/import\(\s*["'`]\.\/([^"'`]+)["'`]\s*\)/g, (_, f) => `Promise.resolve(__req("${f}"))`)
+  const exportsOut = []
+  src = src.replace(/export\s*\{([^}]*)\};?/g, (_, names) => {
+    names.split(',').map((n) => n.trim()).filter(Boolean).forEach((n) => { const [a, b] = n.split(/\s+as\s+/); exportsOut.push([b || a, a]) })
+    return ''
+  })
+  src = src.replace(/export\s+default\s+/, 'const __default = ')
+  if (/const __default = /.test(src)) exportsOut.push(['default', '__default'])
+  const body = `${src}\nreturn {${exportsOut.map(([k, v]) => `${JSON.stringify(k)}: ${v}`).join(',')}};`
+  const mod = {}
+  cache.set(file, mod)
+  const fn = window.eval(`(function(__req){${body}\n})`)
+  Object.assign(mod, fn((f) => loadModule(window, f)))
+  return mod
+}
 const API = process.env.API || 'http://localhost:8000'
 const routes = (process.env.ROUTES || '/,/websites/1,/websites/1/google,/websites/1/keywords,/websites/1/settings').split(',')
 const token = process.env.TOKEN || ''
@@ -32,7 +58,8 @@ for (const route of routes) {
   const errors = []
   dom.window.addEventListener('error', (e) => errors.push(e.message))
   dom.virtualConsole.on('jsdomError', (e) => errors.push(String(e.message || e).slice(0, 200)))
-  try { dom.window.eval(bundle) } catch (e) { errors.push('eval: ' + e.message) }
+  cache.clear()
+  try { loadModule(dom.window, entryFile) } catch (e) { errors.push('eval: ' + e.message) }
   await new Promise((r) => setTimeout(r, 2500))
   const text = dom.window.document.body.textContent.replace(/\s+/g, ' ').trim()
   console.log(`\n=== ${route} (${errors.length} errors)\n${text.slice(0, 6000)}`)

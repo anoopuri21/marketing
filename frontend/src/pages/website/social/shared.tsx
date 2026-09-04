@@ -2,6 +2,7 @@ import clsx from 'clsx'
 import { Globe, Webhook } from 'lucide-react'
 import type { ComponentType, SVGProps } from 'react'
 import type { PostStatus } from '../../../lib/api'
+import { PLATFORM_COLORS, STATUS_STYLES } from './constants'
 
 type IconProps = SVGProps<SVGSVGElement>
 // Brand glyphs (lucide dropped brand icons) – simple path icons, currentColor.
@@ -10,34 +11,13 @@ const InstagramIcon = (p: IconProps) => <svg viewBox="0 0 24 24" fill="none" str
 const LinkedinIcon = (p: IconProps) => <svg viewBox="0 0 24 24" fill="currentColor" {...p}><path d="M6.4 9.2H3.3V20h3.1V9.2zM4.9 4a1.8 1.8 0 100 3.6 1.8 1.8 0 000-3.6zM20.7 13.4c0-3.2-1.7-4.6-4-4.6-1.8 0-2.7 1-3.1 1.7V9.2h-3.1c0 .9 0 10.8 0 10.8h3.1v-6c0-.3 0-.6.1-.9.3-.6.8-1.3 1.7-1.3 1.2 0 1.7.9 1.7 2.3V20h3.1v-6.6z" /></svg>
 const XIcon = (p: IconProps) => <svg viewBox="0 0 24 24" fill="currentColor" {...p}><path d="M17.5 3h3l-6.8 7.8L21.7 21h-6.2l-4.9-6.4L5 21H2l7.3-8.3L1.6 3H8l4.4 5.8L17.5 3zm-1.1 16.2h1.7L7.1 4.7H5.3l11.1 14.5z" /></svg>
 
-export const PLATFORM_ICONS: Record<string, ComponentType<IconProps>> = { facebook: FacebookIcon, instagram: InstagramIcon, linkedin: LinkedinIcon, x: XIcon, webhook: Webhook, google_business: Globe }
-export const PLATFORM_COLORS: Record<string, string> = {
-  facebook: 'bg-[#1877F2]/10 text-[#1877F2]', instagram: 'bg-pink-50 text-pink-600', linkedin: 'bg-[#0A66C2]/10 text-[#0A66C2]',
-  x: 'bg-slate-900/10 text-slate-900', webhook: 'bg-violet-50 text-violet-700', google_business: 'bg-emerald-50 text-emerald-700',
-}
-export const PLATFORM_LABELS: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', linkedin: 'LinkedIn', x: 'X', webhook: 'Webhook', google_business: 'Google Business' }
+const PLATFORM_ICONS: Record<string, ComponentType<IconProps>> = { facebook: FacebookIcon, instagram: InstagramIcon, linkedin: LinkedinIcon, x: XIcon, webhook: Webhook, google_business: Globe }
 
 export function PlatformIcon({ platform, className }: { platform: string; className?: string }) {
   const Icon = PLATFORM_ICONS[platform] ?? Globe
   return <span className={clsx('inline-flex h-7 w-7 items-center justify-center rounded-lg', PLATFORM_COLORS[platform] ?? 'bg-slate-100 text-slate-600', className)}><Icon className="h-4 w-4" /></span>
 }
 
-export const STATUS_STYLES: Record<PostStatus, string> = {
-  draft: 'bg-slate-100 text-slate-600', scheduled: 'bg-sky-50 text-sky-700', publishing: 'bg-amber-50 text-amber-700',
-  published: 'bg-emerald-50 text-emerald-700', failed: 'bg-red-50 text-red-700',
-}
-
 export function StatusBadge({ status }: { status: PostStatus }) {
   return <span className={clsx('badge capitalize', STATUS_STYLES[status])}>{status}</span>
-}
-
-export function toLocalInput(iso: string | null | undefined): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-export function fromLocalInput(v: string): string | null {
-  return v ? new Date(v).toISOString() : null
 }

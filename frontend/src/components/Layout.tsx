@@ -4,7 +4,7 @@ import { Bot, Globe, LayoutDashboard, LogOut, Menu, Plus, Settings2, X } from 'l
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { System, Websites } from '../lib/api'
-import { useAuth } from '../lib/auth'
+import { useAuth } from '../lib/authContext'
 import { scoreBg } from '../lib/utils'
 
 export function Logo({ compact }: { compact?: boolean }) {

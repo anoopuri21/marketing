@@ -3,7 +3,7 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Logo } from '../components/Layout'
 import { Alert, Spinner } from '../components/ui'
 import { errorMessage } from '../lib/api'
-import { useAuth } from '../lib/auth'
+import { useAuth } from '../lib/authContext'
 
 function Shell({ title, subtitle, children, footer }: { title: string; subtitle: string; children: React.ReactNode; footer: React.ReactNode }) {
   return (

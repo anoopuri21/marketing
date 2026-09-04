@@ -3,10 +3,11 @@ import clsx from 'clsx'
 import { ArrowDownRight, ArrowUpRight, Minus, Plus, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Alert, Modal, Spinner, useToast } from '../../components/ui'
+import { Alert, Modal, Spinner } from '../../components/ui'
+import { useToast } from '../../hooks/useToast'
 import { Integrations, Keywords, System, errorMessage } from '../../lib/api'
 import { timeAgo } from '../../lib/utils'
-import { useSite } from './WebsiteLayout'
+import { useSite } from '../../hooks/useSite'
 
 export default function KeywordsTab() {
   const { site } = useSite()

@@ -3,10 +3,11 @@ import clsx from 'clsx'
 import { Check, Copy, Plug, ShieldCheck, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Alert, Modal, Spinner, useToast } from '../../components/ui'
+import { Alert, Modal, Spinner } from '../../components/ui'
+import { useToast } from '../../hooks/useToast'
 import { Integrations, Websites, errorMessage } from '../../lib/api'
 import { timeAgo } from '../../lib/utils'
-import { useSite } from './WebsiteLayout'
+import { useSite } from '../../hooks/useSite'
 
 export default function SettingsTab() {
   const { site } = useSite()

@@ -5,10 +5,11 @@ import {
   Sparkles, Square, Star, Target, Trash2, Upload, X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, EmptyState, Modal, ScoreRing, Spinner, Stat, useToast } from '../../components/ui'
+import { Alert, EmptyState, Modal, ScoreRing, Spinner, Stat } from '../../components/ui'
+import { useToast } from '../../hooks/useToast'
 import { Leads, errorMessage, type Lead, type LeadStatus } from '../../lib/api'
 import { fmtDate, scoreColor, timeAgo } from '../../lib/utils'
-import { useSite } from './WebsiteLayout'
+import { useSite } from '../../hooks/useSite'
 
 const STATUSES: { id: LeadStatus; label: string; color: string }[] = [
   { id: 'new', label: 'New', color: 'bg-slate-100 text-slate-700' },
@@ -65,13 +66,15 @@ export default function LeadsTab() {
     } catch (e) { toast.push('error', errorMessage(e)) }
   }
 
-  const now = Date.now()
-  const list = useMemo(() => (leads.data ?? []).filter((l) => {
-    if (filter === 'due') { if (!l.next_follow_up_at || new Date(l.next_follow_up_at).getTime() > now || l.status === 'won' || l.status === 'lost') return false }
-    else if (filter !== 'all' && l.status !== filter) return false
-    if (q) { const s = q.toLowerCase(); return [l.company, l.website_url, l.category, l.location, l.contact_name, l.pitch?.angle ?? ''].some((v) => v?.toLowerCase().includes(s)) }
-    return true
-  }), [leads.data, filter, q, now])
+  const now = leads.dataUpdatedAt // "due" is judged as of the last fetch – pure during render
+  const list = useMemo(() => {
+    return (leads.data ?? []).filter((l) => {
+      if (filter === 'due') { if (!l.next_follow_up_at || new Date(l.next_follow_up_at).getTime() > now || l.status === 'won' || l.status === 'lost') return false }
+      else if (filter !== 'all' && l.status !== filter) return false
+      if (q) { const s = q.toLowerCase(); return [l.company, l.website_url, l.category, l.location, l.contact_name, l.pitch?.angle ?? ''].some((v) => v?.toLowerCase().includes(s)) }
+      return true
+    })
+  }, [leads.data, filter, q, now])
   const toggle = (id: number) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const allSelected = list.length > 0 && list.every((l) => selected.has(l.id))
   const pending = (leads.data ?? []).filter((l) => !l.qualified_at && !l.qualify_error).length
@@ -182,7 +185,7 @@ export default function LeadsTab() {
       )}
 
       <LeadDrawer siteId={site.id} leadId={open} onClose={() => setOpen(null)} onChanged={invalidate} />
-      <FindModal siteId={site.id} open={findOpen} onClose={() => setFindOpen(false)} onDone={(c) => { setCampaign(c); invalidate() }} defaultQuery={site.industry || ''} defaultLocation={site.target_location || ''} />
+      {findOpen && <FindModal siteId={site.id} onClose={() => setFindOpen(false)} onDone={(c) => { setCampaign(c); invalidate() }} defaultQuery={site.industry || ''} defaultLocation={site.target_location || ''} />}
       <AddModal siteId={site.id} open={addOpen} onClose={() => setAddOpen(false)} onDone={invalidate} />
     </div>
   )
@@ -218,10 +221,10 @@ function Board({ leads, onOpen, siteId, onChanged }: { leads: Lead[]; onOpen: (i
 }
 
 // ------------------------------------------------------------------ find prospects
-function FindModal({ siteId, open, onClose, onDone, defaultQuery, defaultLocation }: { siteId: number; open: boolean; onClose: () => void; onDone: (campaign: string) => void; defaultQuery: string; defaultLocation: string }) {
+function FindModal({ siteId, onClose, onDone, defaultQuery, defaultLocation }: { siteId: number; onClose: () => void; onDone: (campaign: string) => void; defaultQuery: string; defaultLocation: string }) {
   const toast = useToast()
-  const [form, setForm] = useState({ query: '', location: '', mode: 'maps' as 'maps' | 'organic' | 'both', limit: 20, qualify: true })
-  useEffect(() => { if (open) setForm((f) => ({ ...f, query: f.query || '', location: f.location || defaultLocation })) }, [open, defaultLocation])
+  // Mounted only while open, so the initial state is the "reset" – no effect needed.
+  const [form, setForm] = useState({ query: '', location: defaultLocation, mode: 'maps' as 'maps' | 'organic' | 'both', limit: 20, qualify: true })
   const find = useMutation({
     mutationFn: () => Leads.discover(siteId, { ...form, query: form.query.trim(), location: form.location.trim() }),
     onSuccess: (r) => { toast.push('success', `${r.created} new prospects added${r.skipped ? ` (${r.skipped} already known)` : ''}`); onDone(r.campaign) },
@@ -229,7 +232,7 @@ function FindModal({ siteId, open, onClose, onDone, defaultQuery, defaultLocatio
   })
   const suggestions = ['dentist', 'interior designer', 'real estate agent', 'coaching institute', 'restaurant', 'gym', 'salon', 'CA firm', 'wedding photographer', 'clinic']
   return (
-    <Modal open={open} onClose={() => { find.reset(); onClose() }} title="Find prospects" wide>
+    <Modal open onClose={() => { find.reset(); onClose() }} title="Find prospects" wide>
       {find.data ? (
         <div className="space-y-4">
           <Alert kind={find.data.created ? 'success' : 'info'}>{find.data.found} businesses found via {find.data.provider} · {find.data.created} new added{find.data.skipped ? ` · ${find.data.skipped} skipped (duplicates / your own site)` : ''}. {form.qualify && find.data.created ? 'Mini audits + pitches are being generated in the background – scores update live.' : ''}</Alert>
@@ -292,31 +295,37 @@ function AddModal({ siteId, open, onClose, onDone }: { siteId: number; open: boo
 }
 
 // ------------------------------------------------------------------ lead drawer
-function LeadDrawer({ siteId, leadId, onClose, onChanged }: { siteId: number; leadId: number | null; onClose: () => void; onChanged: () => void }) {
+interface DrawerProps { siteId: number; leadId: number | null; onClose: () => void; onChanged: () => void }
+
+/** Remounts the drawer body per lead (`key`) so tab/edit/note state resets without effects. */
+function LeadDrawer({ leadId, ...rest }: DrawerProps) {
+  if (leadId == null) return null
+  return <LeadDrawerBody key={leadId} leadId={leadId} {...rest} />
+}
+
+function LeadDrawerBody({ siteId, leadId, onClose, onChanged }: DrawerProps & { leadId: number }) {
   const toast = useToast()
   const qc = useQueryClient()
-  const lead = useQuery({ queryKey: ['lead', siteId, leadId], queryFn: () => Leads.get(siteId, leadId!), enabled: leadId != null, refetchInterval: (q) => (q.state.data && !q.state.data.qualified_at && !q.state.data.qualify_error ? 3000 : false) })
+  const lead = useQuery({ queryKey: ['lead', siteId, leadId], queryFn: () => Leads.get(siteId, leadId), refetchInterval: (q) => (q.state.data && !q.state.data.qualified_at && !q.state.data.qualify_error ? 3000 : false) })
   const [tab, setTab] = useState<'pitch' | 'audit' | 'activity'>('pitch')
   const [note, setNote] = useState('')
   const [tone, setTone] = useState('friendly')
   const [edit, setEdit] = useState<Partial<Lead> | null>(null)
-  useEffect(() => { setTab('pitch'); setEdit(null); setNote('') }, [leadId])
   useEffect(() => {
-    if (leadId == null) return
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [leadId, onClose])
+  }, [onClose])
   const refresh = (l: Lead) => { qc.setQueryData(['lead', siteId, l.id], l); onChanged() }
-  const status = useMutation({ mutationFn: ({ s, days }: { s: LeadStatus; days?: number }) => Leads.setStatus(siteId, leadId!, s, '', days), onSuccess: refresh, onError: (e) => toast.push('error', errorMessage(e)) })
-  const qualify = useMutation({ mutationFn: () => Leads.qualify(siteId, leadId!), onSuccess: (l) => { refresh(l); toast.push('success', 'Website audited') }, onError: (e) => toast.push('error', errorMessage(e)) })
-  const pitch = useMutation({ mutationFn: () => Leads.pitch(siteId, leadId!, tone), onSuccess: (l) => { refresh(l); toast.push('success', 'Pitch rewritten') }, onError: (e) => toast.push('error', errorMessage(e)) })
-  const update = useMutation({ mutationFn: (p: Partial<Lead> & { activity_note?: string }) => Leads.update(siteId, leadId!, p), onSuccess: (l) => { refresh(l); setEdit(null); setNote('') }, onError: (e) => toast.push('error', errorMessage(e)) })
-  const remove = useMutation({ mutationFn: () => Leads.remove(siteId, leadId!), onSuccess: () => { onChanged(); onClose() } })
+  const status = useMutation({ mutationFn: ({ s, days }: { s: LeadStatus; days?: number }) => Leads.setStatus(siteId, leadId, s, '', days), onSuccess: refresh, onError: (e) => toast.push('error', errorMessage(e)) })
+  const qualify = useMutation({ mutationFn: () => Leads.qualify(siteId, leadId), onSuccess: (l) => { refresh(l); toast.push('success', 'Website audited') }, onError: (e) => toast.push('error', errorMessage(e)) })
+  const pitch = useMutation({ mutationFn: () => Leads.pitch(siteId, leadId, tone), onSuccess: (l) => { refresh(l); toast.push('success', 'Pitch rewritten') }, onError: (e) => toast.push('error', errorMessage(e)) })
+  const update = useMutation({ mutationFn: (p: Partial<Lead> & { activity_note?: string }) => Leads.update(siteId, leadId, p), onSuccess: (l) => { refresh(l); setEdit(null); setNote('') }, onError: (e) => toast.push('error', errorMessage(e)) })
+  const remove = useMutation({ mutationFn: () => Leads.remove(siteId, leadId), onSuccess: () => { onChanged(); onClose() } })
   const copy = async (text: string, what: string) => { try { await navigator.clipboard.writeText(text); toast.push('success', `${what} copied`) } catch { toast.push('error', 'Copy failed') } }
 
-  if (leadId == null) return null
   const l = lead.data
+  const followUpDue = !!l?.next_follow_up_at && new Date(l.next_follow_up_at).getTime() <= lead.dataUpdatedAt
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40" onMouseDown={onClose}>
       <div className="flex h-full w-full max-w-2xl flex-col overflow-y-auto bg-white shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
@@ -361,7 +370,7 @@ function LeadDrawer({ siteId, leadId, onClose, onChanged }: { siteId: number; le
                 {STATUSES.map((s) => <button key={s.id} onClick={() => status.mutate({ s: s.id })} className={clsx('rounded-full px-3 py-1 text-xs font-medium ring-1 transition', l.status === s.id ? clsx(s.color, 'ring-current') : 'bg-white text-slate-500 ring-slate-200 hover:bg-slate-50')}>{s.label}</button>)}
                 <div className="ml-auto flex items-center gap-1 text-xs text-slate-500">
                   <Clock className="h-3 w-3" />
-                  {l.next_follow_up_at ? <span className={new Date(l.next_follow_up_at).getTime() <= Date.now() ? 'font-medium text-amber-600' : ''}>follow-up {fmtDate(l.next_follow_up_at, 'dd MMM')}</span> : 'no follow-up'}
+                  {l.next_follow_up_at ? <span className={followUpDue ? 'font-medium text-amber-600' : ''}>follow-up {fmtDate(l.next_follow_up_at, 'dd MMM')}</span> : 'no follow-up'}
                   <select className="input w-auto py-0.5 text-xs" value="" onChange={(e) => { if (e.target.value) status.mutate({ s: l.status, days: Number(e.target.value) }) }}>
                     <option value="">set…</option>{[1, 2, 3, 5, 7, 14, 30].map((d) => <option key={d} value={d}>in {d} day{d > 1 ? 's' : ''}</option>)}
                   </select>
