@@ -17,6 +17,7 @@ const tabs = [
   { to: '', label: 'Overview', end: true },
   { to: 'issues', label: 'Issues & pages' },
   { to: 'keywords', label: 'Keywords & rankings' },
+  { to: 'google', label: 'Google data' },
   { to: 'plan', label: 'Plan & tasks' },
   { to: 'content', label: 'Content & social' },
   { to: 'reports', label: 'Reports' },

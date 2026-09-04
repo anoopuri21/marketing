@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = True
     scheduler_tick_seconds: int = 60
     auto_audit_interval_days: int = 7
+    integration_sync_interval_hours: int = 24
 
     @property
     def cors_origin_list(self) -> List[str]:

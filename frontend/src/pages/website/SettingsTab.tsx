@@ -2,9 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { Check, Copy, Plug, ShieldCheck, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Alert, Modal, Spinner, useToast } from '../../components/ui'
 import { Integrations, Websites, errorMessage } from '../../lib/api'
+import { timeAgo } from '../../lib/utils'
 import { useSite } from './WebsiteLayout'
 
 export default function SettingsTab() {
@@ -85,19 +86,25 @@ export default function SettingsTab() {
 
       <div className="card p-5 lg:col-span-2">
         <div className="mb-1 flex items-center gap-2"><Plug className="h-5 w-5 text-brand-600" /><h2 className="font-semibold text-slate-900">Integrations</h2></div>
-        <p className="mb-4 text-sm text-slate-500">Store credentials now; live data sync (Search Console clicks/impressions, GA4, social publishing) ships in the next phase.</p>
+        <p className="mb-4 text-sm text-slate-500">Google Search Console and GA4 sync live data (daily + before every report) – set them up in the <Link to="../google" className="text-brand-600 hover:underline">Google data</Link> tab. Social publishing credentials are stored here for the upcoming publishing module.</p>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {catalog.data && Object.entries(catalog.data).map(([key, meta]) => {
             const row = integrations.data?.find((i) => i.provider === key)
+            const live = meta.status === 'live'
+            const statusLabel = !row ? 'not connected' : row.status === 'connected' ? (row.last_synced_at ? `connected · synced ${timeAgo(row.last_synced_at)}` : 'connected') : row.status === 'error' ? 'needs attention' : row.status === 'pending' ? 'pending' : 'incomplete'
             return (
-              <div key={key} className="flex items-center justify-between rounded-xl border border-slate-200 p-3">
-                <div>
-                  <div className="text-sm font-medium text-slate-800">{meta.label}</div>
-                  <div className="text-xs text-slate-400">{row ? (row.status === 'connected' ? 'connected' : 'incomplete') : 'not connected'}</div>
+              <div key={key} className={clsx('flex items-center justify-between rounded-xl border p-3', row?.status === 'error' ? 'border-red-200' : 'border-slate-200')}>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm font-medium text-slate-800">{meta.label}{!live && <span className="badge bg-slate-100 text-[10px] text-slate-500">soon</span>}</div>
+                  <div className={clsx('truncate text-xs', row?.status === 'error' ? 'text-red-600' : row?.status === 'connected' ? 'text-emerald-600' : 'text-slate-400')}>{statusLabel}</div>
                 </div>
-                <div className="flex items-center gap-1">
-                  {row && <button className="rounded-md p-1 text-slate-400 hover:text-red-600" onClick={() => removeInt.mutate(key)}><Trash2 className="h-4 w-4" /></button>}
-                  <button className="btn-secondary px-3 py-1 text-xs" onClick={() => { setIntOpen(key); setIntForm({}) }}>{row ? 'Edit' : 'Connect'}</button>
+                <div className="flex shrink-0 items-center gap-1">
+                  {row && <button className="rounded-md p-1 text-slate-400 hover:text-red-600" onClick={() => removeInt.mutate(key)} title="Disconnect"><Trash2 className="h-4 w-4" /></button>}
+                  {live ? (
+                    <Link to="../google" className="btn-secondary px-3 py-1 text-xs">{row ? 'Manage' : 'Connect'}</Link>
+                  ) : (
+                    <button className="btn-secondary px-3 py-1 text-xs" onClick={() => { setIntOpen(key); setIntForm({}) }}>{row ? 'Edit' : 'Add credentials'}</button>
+                  )}
                 </div>
               </div>
             )

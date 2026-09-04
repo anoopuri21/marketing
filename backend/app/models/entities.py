@@ -6,12 +6,13 @@ integrations, and placeholder tables for social posts & leads (phase 2).
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import List, Optional
 
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -298,8 +299,30 @@ class Integration(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(16), default="disconnected")  # connected|disconnected|error
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     connected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    summary: Mapped[dict] = mapped_column(JSON, default=dict)  # last sync snapshot (totals, daily series ...)
 
     website: Mapped[Website] = relationship(back_populates="integrations")
+
+
+class SearchQueryStat(Base):
+    """Search Console rows for the latest synced period (kind = query | page)."""
+
+    __tablename__ = "search_query_stats"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    website_id: Mapped[int] = mapped_column(ForeignKey("websites.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(8), index=True)
+    key: Mapped[str] = mapped_column(Text)
+    clicks: Mapped[int] = mapped_column(Integer, default=0)
+    impressions: Mapped[int] = mapped_column(Integer, default=0)
+    ctr: Mapped[float] = mapped_column(Float, default=0.0)
+    position: Mapped[float] = mapped_column(Float, default=0.0)
+    prev_clicks: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    prev_position: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    period_start: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    period_end: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
 
 # --------------------------------------------------------------------------- #

@@ -364,6 +364,9 @@ class IntegrationOut(ORMModel):
     status: str
     connected_at: Optional[datetime]
     config: Dict[str, Any]
+    last_synced_at: Optional[datetime] = None
+    last_error: str = ""
+    summary: Dict[str, Any] = Field(default_factory=dict)
 
 
 class IntegrationUpsert(BaseModel):

@@ -60,3 +60,27 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_add_missing_columns)
+
+
+def _add_missing_columns(sync_conn) -> None:
+    """Lightweight forward-only migration: add columns that exist in the models but not in the DB.
+
+    Good enough for SQLite/dev and additive changes; switch to Alembic for production schemas.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(sync_conn)
+    for table in Base.metadata.sorted_tables:
+        if table.name not in inspector.get_table_names():
+            continue
+        existing = {c["name"] for c in inspector.get_columns(table.name)}
+        for column in table.columns:
+            if column.name in existing:
+                continue
+            col_type = column.type.compile(dialect=sync_conn.dialect)
+            default = ""
+            if column.default is not None and getattr(column.default, "is_scalar", False):
+                arg = column.default.arg
+                default = f" DEFAULT {'1' if arg is True else '0' if arg is False else repr(arg)}"
+            sync_conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {col_type}{default}'))

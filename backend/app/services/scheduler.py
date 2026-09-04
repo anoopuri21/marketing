@@ -21,7 +21,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.database import session_scope
-from app.models import Audit, ReportSchedule, Website
+from app.models import Audit, Integration, ReportSchedule, Website
 from app.models.entities import aware
 from app.services.audit.engine import create_and_run_audit, run_audit
 from app.services.reports.generator import generate_and_send
@@ -67,6 +67,7 @@ async def process_due_reports() -> int:
         due_ids = [(s.id, s.website_id, s.run_fresh_audit) for s in due]
     for sched_id, website_id, fresh in due_ids:
         try:
+            await _refresh_integrations(website_id)
             if fresh:
                 await create_and_run_audit(website_id, trigger="report")
             async with session_scope() as db:
@@ -108,6 +109,53 @@ async def process_auto_audits() -> int:
     return len(todo[:5])
 
 
+async def _refresh_integrations(website_id: int) -> None:
+    from app.services.google.analytics import sync_ga4
+    from app.services.google.search_console import sync_search_console
+
+    async with session_scope() as db:
+        website = await db.get(Website, website_id)
+        rows = (await db.execute(select(Integration).where(Integration.website_id == website_id,
+                                                            Integration.provider.in_(["google_search_console", "ga4"]),
+                                                            Integration.status == "connected"))).scalars().all()
+        for row in rows:
+            try:
+                await (sync_search_console if row.provider == "google_search_console" else sync_ga4)(db, website, row)
+            except Exception as exc:
+                log.warning("pre-report sync failed for %s: %s", row.provider, exc)
+
+
+async def process_integration_syncs() -> int:
+    """Refresh Google Search Console / GA4 data once a day per connected integration."""
+    from app.services.google.analytics import sync_ga4
+    from app.services.google.search_console import sync_search_console
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=settings.integration_sync_interval_hours)
+    async with session_scope() as db:
+        rows = (await db.execute(select(Integration).where(Integration.provider.in_(["google_search_console", "ga4"]),
+                                                            Integration.status.in_(["connected", "error"])))).scalars().all()
+        due = [r.id for r in rows if r.last_synced_at is None or aware(r.last_synced_at) <= cutoff]
+    synced = 0
+    for row_id in due[:10]:
+        async with session_scope() as db:
+            row = await db.get(Integration, row_id)
+            website = await db.get(Website, row.website_id) if row else None
+            if row is None or website is None:
+                continue
+            try:
+                if row.provider == "google_search_console":
+                    await sync_search_console(db, website, row)
+                else:
+                    await sync_ga4(db, website, row)
+                synced += 1
+            except Exception as exc:
+                row.status = "error"
+                row.last_error = f"{type(exc).__name__}: {exc}"[:500]
+                row.last_synced_at = datetime.now(timezone.utc)  # back off until the next interval
+                log.warning("integration %s sync failed: %s", row_id, exc)
+    return synced
+
+
 async def recover_stale_audits() -> None:
     """Audits left in queued/running after a restart are re-run (or failed if too old)."""
     async with session_scope() as db:
@@ -129,6 +177,7 @@ async def tick() -> None:
         return
     async with _lock:
         try:
+            await process_integration_syncs()
             await process_due_reports()
             await process_auto_audits()
         except Exception:

@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { Bot, Lightbulb, Target, TrendingUp } from 'lucide-react'
+import { Bot, Lightbulb, Search, Sparkles, Target, TrendingUp } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { EmptyState, ScoreBar, Spinner } from '../../components/ui'
-import { Audits, Tasks } from '../../lib/api'
+import { Audits, Integrations, Tasks, type AnalyticsData, type SearchPerformance } from '../../lib/api'
 import { fmtDate, priorityStyles, severityStyles } from '../../lib/utils'
 import { useSite } from './WebsiteLayout'
 
@@ -12,6 +12,8 @@ export default function OverviewTab() {
   const { site, audits, latestCompleted, running } = useSite()
   const latest = useQuery({ queryKey: ['latest-audit', site.id], queryFn: () => Audits.latest(site.id), enabled: !!latestCompleted, retry: false })
   const tasks = useQuery({ queryKey: ['tasks', site.id], queryFn: () => Tasks.list(site.id) })
+  const perf = useQuery({ queryKey: ['search-performance', site.id], queryFn: () => Integrations.searchPerformance(site.id) })
+  const analytics = useQuery({ queryKey: ['analytics', site.id], queryFn: () => Integrations.analytics(site.id) })
 
   if (!latestCompleted) {
     const failed = audits.find((a) => a.status === 'failed')
@@ -100,6 +102,8 @@ export default function OverviewTab() {
       </div>
 
       <div className="space-y-6">
+        <GoogleSnapshot gsc={perf.data?.summary.totals ? perf.data : undefined} ga4={analytics.data?.summary?.totals ? analytics.data : undefined} loaded={perf.isFetched && analytics.isFetched} />
+
         <div className="card p-5">
           <h2 className="mb-3 font-semibold text-slate-900">Score trend</h2>
           {history.length < 2 ? (
@@ -157,6 +161,44 @@ export default function OverviewTab() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function GoogleSnapshot({ gsc, ga4, loaded }: { gsc?: SearchPerformance; ga4?: AnalyticsData; loaded: boolean }) {
+  if (!loaded) return null
+  if (!gsc && !ga4) {
+    return (
+      <div className="card border-dashed p-5">
+        <div className="mb-1 flex items-center gap-2"><Search className="h-4 w-4 text-brand-600" /><h2 className="font-semibold text-slate-900">Real Google data</h2></div>
+        <p className="text-sm text-slate-500">Connect Search Console to see the actual searches bringing visitors, page-1 opportunities and true positions for your keywords.</p>
+        <Link to="google" className="btn-primary mt-3 inline-flex">Connect Google</Link>
+      </div>
+    )
+  }
+  const t = gsc?.summary.totals
+  const g = ga4?.summary?.totals
+  const change = (cur: number, prev: number) => (prev ? Math.round(((cur - prev) / prev) * 1000) / 10 : null)
+  const Item = ({ label, value, ch }: { label: string; value: string; ch: number | null }) => (
+    <div className="rounded-xl bg-slate-50 p-3">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="flex items-baseline gap-1.5"><span className="text-lg font-bold text-slate-900">{value}</span>{ch !== null && <span className={clsx('text-[11px] font-semibold', ch >= 0 ? 'text-emerald-600' : 'text-red-500')}>{ch >= 0 ? '+' : ''}{ch}%</span>}</div>
+    </div>
+  )
+  return (
+    <div className="card p-5">
+      <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold text-slate-900">Google · last 28 days</h2><Link to="google" className="text-xs font-semibold text-brand-600">Details →</Link></div>
+      <div className="grid grid-cols-2 gap-2">
+        {t && <Item label="Clicks" value={t.clicks.toLocaleString()} ch={change(t.clicks, t.prev_clicks)} />}
+        {t && <Item label="Impressions" value={t.impressions.toLocaleString()} ch={change(t.impressions, t.prev_impressions)} />}
+        {g && <Item label="Sessions" value={g.sessions.toLocaleString()} ch={change(g.sessions, g.prev_sessions)} />}
+        {g && <Item label="Conversions" value={g.conversions.toLocaleString()} ch={change(g.conversions, g.prev_conversions)} />}
+        {t && !g && <Item label="Avg. position" value={String(t.avg_position ?? '–')} ch={null} />}
+        {t && !g && <Item label="CTR" value={`${t.ctr}%`} ch={null} />}
+      </div>
+      {gsc && gsc.opportunities.length > 0 && (
+        <div className="mt-3 text-xs text-slate-500"><Sparkles className="mr-1 inline h-3 w-3 text-amber-500" /><b>{gsc.opportunities.length}</b> quick-win queries sit on positions 5-20 · <Link to="google" className="text-brand-600 hover:underline">see them</Link></div>
+      )}
     </div>
   )
 }

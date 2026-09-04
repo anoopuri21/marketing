@@ -8,6 +8,7 @@ from app.models.entities import (  # noqa: F401
     Lead,
     ReportRun,
     ReportSchedule,
+    SearchQueryStat,
     SocialPost,
     Task,
     User,

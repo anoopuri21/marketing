@@ -15,11 +15,12 @@ and emails clients a branded **weekly / monthly report** on schedule — fully a
 | Connect website + ownership verification | ✅ | Meta tag / HTML file / DNS TXT |
 | Audit engine (crawler + 60+ checks) | ✅ | 7 categories: on-page SEO, technical, content, AEO, AI-readiness, performance, social |
 | AI insights, keyword ideas, action plans, social drafts | ✅ | Pluggable OpenAI / Anthropic; rule-based fallback works with **no key** |
-| Keyword rank tracking | ✅ (provider-gated) | Live positions via SerpAPI when `SERPAPI_KEY` is set |
+| Keyword rank tracking | ✅ | Real positions from Search Console (free) for matching queries; on-demand SerpAPI checks when `SERPAPI_KEY` is set |
 | Planning board (auto-tasks from audits) | ✅ | Tasks auto-resolve when the issue disappears in a later audit |
 | Scheduled email reports (weekly / monthly, timezone aware) | ✅ | SMTP delivery; file outbox in dev |
 | Automatic re-audits | ✅ | Every 7 days per site (configurable) |
-| Integrations vault (GSC, GA4, GBP, FB, IG, LinkedIn, X) | 🟡 | Credentials stored, live sync in phase 2 |
+| **Google Search Console + GA4 sync** | ✅ | Service-account JSON per site → clicks, impressions, CTR, positions, top queries/pages, page-1 opportunities, sessions, conversions, channels. Daily auto-sync + refresh before each report |
+| Integrations vault (GBP, FB, IG, LinkedIn, X) | 🟡 | Credentials stored, publishing in phase 2 |
 | Social publishing, lead finder | 🔜 | Data model ready (`social_posts`, `leads`), see [ROADMAP](docs/ROADMAP.md) |
 
 ## Tech stack
@@ -103,7 +104,21 @@ docker compose up -d --build     # API + built frontend served by the API on :80
 Or run `uvicorn app.main:app` behind any reverse proxy and serve `frontend/dist` (the API serves it
 automatically when the folder exists). Use PostgreSQL + a persistent volume for `backend/data`.
 
+## Connecting Google Search Console / GA4 (per website)
+
+RankPilot reads Google data with a **service account** – no OAuth app review needed, works for agencies
+managing many client sites. One-time setup (~2 minutes), guided inside the app (*Website → Google data*):
+
+1. Google Cloud Console → enable **Search Console API** and/or **Google Analytics Data API**.
+2. IAM & Admin → Service accounts → create one → **Keys → Add key → JSON** (download).
+3. Grant that service-account email access: Search Console → Settings → Users (Full), and/or GA4 → Admin →
+   Property access management (Viewer). For GA4 also note the numeric **Property ID**.
+4. Paste/upload the JSON in the app. The property is auto-detected (domain or URL-prefix); the first sync runs
+   immediately and then daily (`INTEGRATION_SYNC_INTERVAL_HOURS`) plus right before every scheduled report.
+
+Keys are stored per website and never returned by the API (only the service-account email is shown).
+
 ## Roadmap
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) — next: Google Search Console / GA4 sync, social publishing &
-creative generation, lead finder, PDF reports, white-label client portal.
+See [docs/ROADMAP.md](docs/ROADMAP.md) — next: social publishing & creative generation, lead finder,
+PDF reports, white-label client portal.

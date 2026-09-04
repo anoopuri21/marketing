@@ -83,7 +83,29 @@ export interface ReportRun {
   id: number; schedule_id: number | null; website_id: number; period_label: string; status: 'pending' | 'sent' | 'failed'
   recipients: string[]; subject: string; delivery_info: string; error: string; created_at: string
 }
-export interface Integration { id: number; provider: string; status: string; connected_at: string | null; config: Record<string, unknown> }
+export interface Integration {
+  id: number; provider: string; status: 'connected' | 'pending' | 'error' | 'disconnected' | string; connected_at: string | null
+  config: Record<string, unknown>; last_synced_at: string | null; last_error: string; summary: Record<string, unknown>
+}
+export interface IntegrationMeta { label: string; fields: string[]; optional_fields: string[]; status: 'live' | 'planned'; help: string }
+export interface SearchStat { key: string; clicks: number; impressions: number; ctr: number; position: number; prev_clicks: number | null; prev_position: number | null }
+export interface SearchPerformance {
+  connected: boolean; synced_at: string | null; error: string
+  summary: { property?: string; period?: { start: string; end: string; days: number }; matched_keywords?: number
+    totals?: { clicks: number; impressions: number; prev_clicks: number; prev_impressions: number; avg_position: number | null; ctr: number }
+    daily?: { date: string; clicks: number; impressions: number; position: number }[] }
+  queries: SearchStat[]; pages: SearchStat[]; opportunities: SearchStat[]
+}
+export interface AnalyticsData {
+  connected: boolean; synced_at?: string | null; error?: string
+  summary?: { property?: string; period?: { start: string; end: string; days: number }
+    totals?: { sessions: number; users: number; engaged_sessions: number; conversions: number; avg_session_duration: number; prev_sessions: number; prev_users: number; prev_conversions: number; engagement_rate: number; organic_sessions: number; organic_share: number }
+    daily?: { date: string; sessions: number; users: number; conversions: number }[]
+    channels?: { channel: string; sessions: number; conversions: number }[]
+    top_pages?: { path: string; views: number; sessions: number }[]
+    countries?: { country: string; sessions: number }[]
+    devices?: { device: string; sessions: number }[] }
+}
 export interface SystemStatus { app_name: string; environment: string; ai_provider: string; serp_provider: string; email_backend: string; scheduler_enabled: boolean; version: string }
 export interface Dashboard {
   websites: number; verified_websites: number; audits_completed: number; open_tasks: number; tracked_keywords: number
@@ -165,11 +187,14 @@ export const Reports = {
 }
 
 export const Integrations = {
-  catalog: () => api.get<Record<string, { label: string; fields: string[]; status: string }>>('/integrations/catalog').then((r) => r.data),
+  catalog: () => api.get<Record<string, IntegrationMeta>>('/integrations/catalog').then((r) => r.data),
   list: (siteId: number) => api.get<Integration[]>(`/websites/${siteId}/integrations`).then((r) => r.data),
   upsert: (siteId: number, provider: string, config: Record<string, string>) =>
     api.put<Integration>(`/websites/${siteId}/integrations`, { provider, config }).then((r) => r.data),
+  sync: (siteId: number, provider: string) => api.post<Integration>(`/websites/${siteId}/integrations/${provider}/sync`).then((r) => r.data),
   remove: (siteId: number, provider: string) => api.delete(`/websites/${siteId}/integrations/${provider}`),
+  searchPerformance: (siteId: number) => api.get<SearchPerformance>(`/websites/${siteId}/search-performance`).then((r) => r.data),
+  analytics: (siteId: number) => api.get<AnalyticsData>(`/websites/${siteId}/analytics`).then((r) => r.data),
 }
 
 export const Social = {

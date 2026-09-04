@@ -1,4 +1,4 @@
-"""Dashboard, integrations, social drafts, system status."""
+"""Dashboard, social drafts, system status."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -11,21 +11,11 @@ from sqlalchemy import func, select
 from app import __version__
 from app.api.deps import DB, CurrentUser, OwnedWebsite
 from app.core.config import settings
-from app.models import Audit, AuditIssue, Integration, Keyword, ReportRun, ReportSchedule, Task, Website, Workspace
-from app.schemas.all import AuditSummaryOut, DashboardOut, IntegrationOut, IntegrationUpsert, ReportScheduleOut, SystemStatus
+from app.models import Audit, AuditIssue, Keyword, ReportRun, ReportSchedule, Task, Website, Workspace
+from app.schemas.all import AuditSummaryOut, DashboardOut, ReportScheduleOut, SystemStatus
 from app.services.ai.insights import draft_social_posts
 
 router = APIRouter(prefix="/api", tags=["dashboard & system"])
-
-SUPPORTED_INTEGRATIONS = {
-    "google_search_console": {"label": "Google Search Console", "fields": ["site_url", "service_account_json"], "status": "planned"},
-    "ga4": {"label": "Google Analytics 4", "fields": ["property_id", "service_account_json"], "status": "planned"},
-    "google_business_profile": {"label": "Google Business Profile", "fields": ["location_id"], "status": "planned"},
-    "facebook": {"label": "Facebook Page", "fields": ["page_id", "access_token"], "status": "planned"},
-    "instagram": {"label": "Instagram Business", "fields": ["account_id", "access_token"], "status": "planned"},
-    "linkedin": {"label": "LinkedIn Page", "fields": ["organization_id", "access_token"], "status": "planned"},
-    "x": {"label": "X (Twitter)", "fields": ["api_key", "api_secret", "access_token", "access_secret"], "status": "planned"},
-}
 
 
 @router.get("/system/status", response_model=SystemStatus)
@@ -74,52 +64,6 @@ async def dashboard(user: CurrentUser, db: DB):
         recent_audits=[AuditSummaryOut.model_validate(a) for a in recent],
         upcoming_reports=[ReportScheduleOut.model_validate(s) for s in upcoming], open_issue_counts=counts,
     )
-
-
-# --------------------------------------------------------------------------- #
-# Integrations (credentials stored; live sync arrives in phase 2)
-# --------------------------------------------------------------------------- #
-@router.get("/integrations/catalog")
-async def integrations_catalog():
-    return SUPPORTED_INTEGRATIONS
-
-
-@router.get("/websites/{website_id}/integrations", response_model=List[IntegrationOut])
-async def list_integrations(website: OwnedWebsite, db: DB):
-    rows = (await db.execute(select(Integration).where(Integration.website_id == website.id))).scalars().all()
-    # never leak secrets back to the client
-    out = []
-    for r in rows:
-        masked = {k: ("••••••" if any(s in k for s in ("token", "secret", "json", "password", "key")) and v else v) for k, v in (r.config or {}).items()}
-        out.append(IntegrationOut(id=r.id, provider=r.provider, status=r.status, connected_at=r.connected_at, config=masked))
-    return out
-
-
-@router.put("/websites/{website_id}/integrations", response_model=IntegrationOut)
-async def upsert_integration(payload: IntegrationUpsert, website: OwnedWebsite, db: DB):
-    if payload.provider not in SUPPORTED_INTEGRATIONS:
-        raise HTTPException(status_code=400, detail=f"Unsupported provider. Supported: {', '.join(SUPPORTED_INTEGRATIONS)}")
-    row = (await db.execute(select(Integration).where(Integration.website_id == website.id, Integration.provider == payload.provider))).scalar_one_or_none()
-    if row is None:
-        row = Integration(website_id=website.id, provider=payload.provider)
-        db.add(row)
-    row.config = {**(row.config or {}), **payload.config}
-    required = SUPPORTED_INTEGRATIONS[payload.provider]["fields"]
-    row.status = "connected" if all(row.config.get(f) for f in required) else "disconnected"
-    row.connected_at = datetime.now(timezone.utc) if row.status == "connected" else None
-    await db.commit()
-    await db.refresh(row)
-    masked = {k: ("••••••" if any(s in k for s in ("token", "secret", "json", "password", "key")) and v else v) for k, v in row.config.items()}
-    return IntegrationOut(id=row.id, provider=row.provider, status=row.status, connected_at=row.connected_at, config=masked)
-
-
-@router.delete("/websites/{website_id}/integrations/{provider}", status_code=204)
-async def delete_integration(provider: str, website: OwnedWebsite, db: DB):
-    row = (await db.execute(select(Integration).where(Integration.website_id == website.id, Integration.provider == provider))).scalar_one_or_none()
-    if row:
-        await db.delete(row)
-        await db.commit()
-    return None
 
 
 # --------------------------------------------------------------------------- #

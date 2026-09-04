@@ -2,8 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { ArrowDownRight, ArrowUpRight, Minus, Plus, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Alert, Modal, Spinner, useToast } from '../../components/ui'
-import { Keywords, System, errorMessage } from '../../lib/api'
+import { Integrations, Keywords, System, errorMessage } from '../../lib/api'
 import { timeAgo } from '../../lib/utils'
 import { useSite } from './WebsiteLayout'
 
@@ -13,6 +14,7 @@ export default function KeywordsTab() {
   const toast = useToast()
   const kws = useQuery({ queryKey: ['keywords', site.id], queryFn: () => Keywords.list(site.id) })
   const status = useQuery({ queryKey: ['system'], queryFn: System.status, staleTime: 60_000 })
+  const integrations = useQuery({ queryKey: ['integrations', site.id], queryFn: () => Integrations.list(site.id) })
   const [addOpen, setAddOpen] = useState(false)
   const [raw, setRaw] = useState('')
   const [location, setLocation] = useState(site.target_location || '')
@@ -38,7 +40,8 @@ export default function KeywordsTab() {
   const suggest = useMutation({ mutationFn: () => Keywords.suggest(site.id), onSuccess: () => setSuggestOpen(true), onError: (e) => toast.push('error', errorMessage(e)) })
 
   const list = kws.data ?? []
-  const noSerp = status.data?.serp_provider === 'none'
+  const gscConnected = integrations.data?.some((i) => i.provider === 'google_search_console' && i.status === 'connected')
+  const noSerp = status.data?.serp_provider === 'none' && !gscConnected
 
   return (
     <div>
@@ -51,7 +54,8 @@ export default function KeywordsTab() {
       {noSerp && (
         <div className="mb-4">
           <Alert kind="warning">
-            Live Google positions need a SERP data provider. Set <code className="rounded bg-amber-100 px-1">SERPAPI_KEY</code> in the backend <code className="rounded bg-amber-100 px-1">.env</code> and restart — keywords you add now will start populating automatically.
+            Real Google positions come free from <Link to="../google" className="font-semibold underline">Google Search Console</Link> – connect it and matching keywords fill in automatically on every sync.
+            Alternatively set <code className="rounded bg-amber-100 px-1">SERPAPI_KEY</code> in the backend <code className="rounded bg-amber-100 px-1">.env</code> for on-demand SERP checks of any keyword.
           </Alert>
         </div>
       )}

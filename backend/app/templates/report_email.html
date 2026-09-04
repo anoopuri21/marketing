@@ -71,6 +71,67 @@
     </table>
   </td></tr>
 
+
+  {% if gsc or ga4 %}
+  <tr><td style="padding:24px 32px 0;">
+    <div style="font-size:15px;font-weight:700;margin-bottom:8px;">Google performance (last {{ (gsc.period.days if gsc else ga4.period.days) }} days)</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="font-size:13px;text-align:center;">
+      <tr>
+        {% if gsc %}
+        {% set t = gsc.totals %}
+        {% for label, val, prev in [("Clicks", t.clicks, t.prev_clicks), ("Impressions", t.impressions, t.prev_impressions)] %}
+        {% set ch = pct(val, prev) %}
+        <td style="padding:12px 6px;background:#f9fafb;border-radius:10px;border-right:6px solid #fff;">
+          <div style="font-size:20px;font-weight:800;color:#111827;">{{ "{:,}".format(val) }}</div>
+          <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">{{ label }}</div>
+          {% if ch is not none %}<div style="font-size:11px;font-weight:700;color:{{ '#059669' if ch >= 0 else '#dc2626' }};">{{ '+' if ch >= 0 else '' }}{{ ch }}%</div>{% endif %}
+        </td>
+        {% endfor %}
+        <td style="padding:12px 6px;background:#f9fafb;border-radius:10px;border-right:6px solid #fff;">
+          <div style="font-size:20px;font-weight:800;color:#111827;">{{ t.avg_position if t.avg_position is not none else '–' }}</div>
+          <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">Avg. position</div>
+        </td>
+        {% endif %}
+        {% if ga4 %}
+        {% set g = ga4.totals %}
+        {% set ch = pct(g.sessions, g.prev_sessions) %}
+        <td style="padding:12px 6px;background:#f9fafb;border-radius:10px;border-right:6px solid #fff;">
+          <div style="font-size:20px;font-weight:800;color:#111827;">{{ "{:,}".format(g.sessions) }}</div>
+          <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">Sessions</div>
+          {% if ch is not none %}<div style="font-size:11px;font-weight:700;color:{{ '#059669' if ch >= 0 else '#dc2626' }};">{{ '+' if ch >= 0 else '' }}{{ ch }}%</div>{% endif %}
+        </td>
+        <td style="padding:12px 6px;background:#f9fafb;border-radius:10px;">
+          <div style="font-size:20px;font-weight:800;color:#111827;">{{ g.organic_share }}%</div>
+          <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">Organic share</div>
+          <div style="font-size:11px;color:#6b7280;">{{ "{:,}".format(g.conversions) }} conversions</div>
+        </td>
+        {% endif %}
+      </tr>
+    </table>
+    {% if top_queries %}
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="font-size:13px;border-collapse:collapse;margin-top:12px;">
+      <tr style="color:#6b7280;font-size:11px;text-transform:uppercase;letter-spacing:.05em;">
+        <td style="padding:6px 0;">Top search queries</td><td style="padding:6px 0;text-align:right;">Clicks</td><td style="padding:6px 0;text-align:right;">Impr.</td><td style="padding:6px 0;text-align:right;">Pos.</td>
+      </tr>
+      {% for q in top_queries %}
+      <tr style="border-top:1px solid #f1f5f9;">
+        <td style="padding:7px 0;color:#111827;">{{ q.key }}</td>
+        <td style="padding:7px 0;text-align:right;font-weight:600;">{{ q.clicks }}</td>
+        <td style="padding:7px 0;text-align:right;color:#6b7280;">{{ "{:,}".format(q.impressions) }}</td>
+        <td style="padding:7px 0;text-align:right;font-weight:600;">{{ "%.1f"|format(q.position) }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+    {% if opportunities %}
+    <div style="margin-top:12px;border:1px solid #fde68a;background:#fffbeb;border-radius:10px;padding:10px 12px;font-size:13px;color:#92400e;">
+      <b>Quick-win opportunities</b> (ranking 5-20 with real demand – small improvements move these to page 1):
+      {% for o in opportunities %}<div style="margin-top:3px;">• “{{ o.key }}” – position {{ "%.1f"|format(o.position) }}, {{ "{:,}".format(o.impressions) }} impressions</div>{% endfor %}
+    </div>
+    {% endif %}
+  </td></tr>
+  {% endif %}
+
   {% if top_issues %}
   <tr><td style="padding:24px 32px 0;">
     <div style="font-size:15px;font-weight:700;margin-bottom:8px;">Top issues to fix</div>

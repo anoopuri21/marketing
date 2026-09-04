@@ -13,10 +13,11 @@ AI search, social, digital marketing, lead generation) on automation, with sched
 - Reports: branded HTML email, weekly/monthly schedules per client (timezone aware), send-now, preview, history
 - Automation: scheduler ticks every minute; automatic re-audit every N days; fresh audit before each report
 - Integrations vault (credentials stored, masked in API)
+- **Google Search Console + GA4 sync** (service account JSON, no Google SDK): queries/pages/daily totals with period-over-period deltas, quick-win opportunities (positions 5-20), real positions fed into keyword tracking, GA4 sessions/users/conversions/channels/pages/devices/countries; daily auto-sync + pre-report refresh; Google section in the email report; *Google data* tab + overview snapshot
 
 ## 🔜 Phase 2 — Data & distribution
 
-1. **Google Search Console + GA4 sync** (service account / OAuth): real clicks, impressions, CTR, positions per query & page → replaces/complements SerpAPI; "pages ranking 5-20" opportunities in reports.
+1. ~~Google Search Console + GA4 sync~~ ✅ shipped (see above). Follow-ups: OAuth "Sign in with Google" flow as an alternative to service accounts, GSC URL-inspection (index status) per page, Bing Webmaster Tools.
 2. **Social publishing**: connect Facebook Page, Instagram Business, LinkedIn Page, X, Google Business Profile; content calendar; scheduled publishing from `social_posts`; AI captions + hashtags; **creative generation** (image templates + AI images) for posts.
 3. **Lead finder**: discover prospects (Google Places / directories / LinkedIn-style sources) by industry + location, score them, outreach templates, pipeline stages (`leads` table already exists).
 4. **PDF reports + white-label**: agency logo/colours, custom sender domain, client portal (read-only login per client).

@@ -10,6 +10,7 @@ import SettingsPage from './pages/SettingsPage'
 import ContentTab from './pages/website/ContentTab'
 import IssuesTab from './pages/website/IssuesTab'
 import KeywordsTab from './pages/website/KeywordsTab'
+import GoogleTab from './pages/website/GoogleTab'
 import OverviewTab from './pages/website/OverviewTab'
 import PlanTab from './pages/website/PlanTab'
 import ReportsTab from './pages/website/ReportsTab'
@@ -47,6 +48,7 @@ export default function App() {
                     <Route path="issues" element={<IssuesTab />} />
                     <Route path="audits/:auditId" element={<IssuesTab />} />
                     <Route path="keywords" element={<KeywordsTab />} />
+                    <Route path="google" element={<GoogleTab />} />
                     <Route path="plan" element={<PlanTab />} />
                     <Route path="content" element={<ContentTab />} />
                     <Route path="reports" element={<ReportsTab />} />

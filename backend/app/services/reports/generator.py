@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
-from app.models import Audit, AuditIssue, ReportRun, Task, Website
+from app.models import Audit, AuditIssue, Integration, ReportRun, SearchQueryStat, Task, Website
 from app.models.entities import aware
 from app.services.rank_tracker import enrich_keyword, load_keywords
 from app.services.reports.mailer import send_email
@@ -30,6 +30,16 @@ def score_color(v) -> str:
     if v >= 60:
         return "#d97706"
     return "#dc2626"
+
+
+def pct_change(cur, prev) -> Optional[float]:
+    try:
+        cur, prev = float(cur or 0), float(prev or 0)
+    except (TypeError, ValueError):
+        return None
+    if prev <= 0:
+        return None
+    return round((cur - prev) / prev * 100, 1)
 
 
 def severity_color(sev: str) -> str:
@@ -103,6 +113,19 @@ async def build_report_html(db, website: Website, period: str = "weekly") -> tup
         ("Keywords tracked", len(keywords)),
         ("Tasks done", len(tasks_done)),
     ]
+    # Live data from Google integrations (if connected)
+    integrations = {i.provider: i for i in (await db.execute(select(Integration).where(Integration.website_id == website.id))).scalars().all()}
+    gsc = integrations.get("google_search_console")
+    ga4 = integrations.get("ga4")
+    gsc_summary = (gsc.summary or {}) if gsc and gsc.status == "connected" else {}
+    ga4_summary = (ga4.summary or {}) if ga4 and ga4.status == "connected" else {}
+    top_queries: list = []
+    opportunities: list = []
+    if gsc_summary:
+        query_stats = (await db.execute(select(SearchQueryStat).where(SearchQueryStat.website_id == website.id, SearchQueryStat.kind == "query"))).scalars().all()
+        top_queries = sorted(query_stats, key=lambda q: (-q.clicks, -q.impressions))[:8]
+        opportunities = sorted([q for q in query_stats if 4.5 <= q.position <= 20 and q.impressions >= 20], key=lambda q: -q.impressions)[:5]
+
     period_label = "Weekly" if period == "weekly" else "Monthly"
     subject = f"[{settings.app_name}] {period_label} report for {website.name or website.domain} – score {overall if overall is not None else 'n/a'}/100"
     rank_note = ""
@@ -116,6 +139,7 @@ async def build_report_html(db, website: Website, period: str = "weekly") -> tup
         categories=categories, executive_summary=insights.get("executive_summary", ""), stats=stats,
         top_issues=top_issues, keywords=kw_rows, rank_note=rank_note, tasks_done=tasks_done, tasks_open=tasks_open,
         quick_wins=(insights.get("quick_wins") or [])[:5], dashboard_url=f"{settings.frontend_url}/websites/{website.id}",
+        gsc=gsc_summary, ga4=ga4_summary, top_queries=top_queries, opportunities=opportunities, pct=pct_change,
         pages_crawled=latest.pages_crawled if latest else settings.crawl_max_pages,
         score_color=score_color, severity_color=severity_color,
     )
