@@ -4,8 +4,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
@@ -14,11 +13,19 @@ from sqlalchemy import select
 
 from app.api.deps import DB, OwnedWebsite
 from app.core.config import settings
-from app.core.database import session_scope
-from app.models import Lead, Website
+from app.core.errors import UpstreamError
+from app.models import Lead
+from app.services.leads import service as leads_service
 from app.services.leads.pitch import write_pitch
 from app.services.leads.service import (
-    STATUSES, discover_and_save, lead_to_dict, pipeline_summary, qualify_lead, set_status, website_ctx,
+    discover_and_save,
+    lead_to_dict,
+    normalize_url,
+    pipeline_summary,
+    qualify_lead,
+    qualify_leads_in_background,
+    set_status,
+    website_ctx,
 )
 from app.services.leads.sources import host_of
 
@@ -47,73 +54,39 @@ class LeadIn(BaseModel):
     location: str = ""
     address: str = ""
     notes: str = ""
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
 
 
 class LeadUpdate(BaseModel):
-    company: Optional[str] = None
-    contact_name: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    website_url: Optional[str] = None
-    category: Optional[str] = None
-    location: Optional[str] = None
-    address: Optional[str] = None
-    notes: Optional[str] = None
-    tags: Optional[List[str]] = None
-    status: Optional[str] = None
-    next_follow_up_at: Optional[datetime] = None
-    activity_note: Optional[str] = None  # append a note to the timeline
+    company: str | None = None
+    contact_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    website_url: str | None = None
+    category: str | None = None
+    location: str | None = None
+    address: str | None = None
+    notes: str | None = None
+    tags: list[str] | None = None
+    status: str | None = None
+    next_follow_up_at: datetime | None = None
+    activity_note: str | None = None  # append a note to the timeline
 
 
 class StatusIn(BaseModel):
     status: str
     note: str = ""
-    schedule_follow_up_days: Optional[int] = Field(None, ge=0, le=90)
+    schedule_follow_up_days: int | None = Field(None, ge=0, le=90)
 
 
 class BulkIn(BaseModel):
-    ids: List[int]
+    ids: list[int]
     action: str = Field(..., pattern="^(qualify|delete|status)$")
-    status: Optional[str] = None
+    status: str | None = None
 
 
 class PitchIn(BaseModel):
     tone: str = "friendly"
-
-
-# --------------------------------------------------------------------------- #
-# helpers
-# --------------------------------------------------------------------------- #
-async def _get_lead(db, website_id: int, lead_id: int) -> Lead:
-    lead = (await db.execute(select(Lead).where(Lead.id == lead_id, Lead.website_id == website_id))).scalar_one_or_none()
-    if lead is None:
-        raise HTTPException(404, "Lead not found")
-    return lead
-
-
-async def _qualify_in_background(lead_ids: List[int], website_id: int) -> None:
-    async with session_scope() as db:
-        website = await db.get(Website, website_id)
-        if website is None:
-            return
-        for lid in lead_ids:
-            lead = await db.get(Lead, lid)
-            if lead is None or lead.qualified_at is not None:
-                continue
-            try:
-                await qualify_lead(db, lead, website)
-            except Exception as exc:  # pragma: no cover
-                log.warning("background qualify failed for lead %s: %s", lid, exc)
-                lead.qualify_error = str(exc)[:300]
-                await db.commit()
-
-
-def _norm_url(u: str) -> str:
-    u = (u or "").strip()
-    if u and "://" not in u:
-        u = "https://" + u
-    return u[:2048]
 
 
 # --------------------------------------------------------------------------- #
@@ -125,22 +98,11 @@ async def summary(website: OwnedWebsite, db: DB):
 
 
 @router.get("")
-async def list_leads(website: OwnedWebsite, db: DB, status: Optional[str] = None, campaign: Optional[str] = None,
-                     q: Optional[str] = None, min_score: int = 0, sort: str = Query("score", pattern="^(score|created|company|follow_up)$"),
+async def list_leads(website: OwnedWebsite, db: DB, status: str | None = None, campaign: str | None = None,
+                     q: str | None = None, min_score: int = 0, sort: str = Query("score", pattern="^(score|created|company|follow_up)$"),
                      limit: int = Query(200, ge=1, le=1000)):
-    stmt = select(Lead).where(Lead.website_id == website.id)
-    if status:
-        stmt = stmt.where(Lead.status.in_([s for s in status.split(",") if s]))
-    if campaign:
-        stmt = stmt.where(Lead.campaign == campaign)
-    if min_score:
-        stmt = stmt.where(Lead.score >= min_score)
-    if q:
-        like = f"%{q.strip()}%"
-        stmt = stmt.where(Lead.company.ilike(like) | Lead.website_url.ilike(like) | Lead.category.ilike(like) | Lead.location.ilike(like) | Lead.notes.ilike(like))
-    order = {"score": (Lead.score.desc(), Lead.id.desc()), "created": (Lead.id.desc(),), "company": (Lead.company.asc(),),
-             "follow_up": (Lead.next_follow_up_at.asc().nulls_last(), Lead.id.desc())}[sort]
-    rows = (await db.execute(stmt.order_by(*order).limit(limit))).scalars().all()
+    statuses = [s for s in status.split(",") if s] if status else None
+    rows = await leads_service.list_leads(db, website.id, statuses=statuses, campaign=campaign, q=q, min_score=min_score, sort=sort, limit=limit)
     return [lead_to_dict(l) for l in rows]
 
 
@@ -158,24 +120,24 @@ async def discover(payload: DiscoverIn, website: OwnedWebsite, db: DB, backgroun
         res = await discover_and_save(db, website, payload.query.strip(), payload.location.strip(), mode=payload.mode, limit=payload.limit)
     except Exception as exc:
         log.warning("discovery failed: %s", exc)
-        raise HTTPException(502, f"Discovery failed: {str(exc)[:200]}")
+        raise UpstreamError(f"Discovery failed: {str(exc)[:200]}") from exc
     if payload.qualify and res["leads"]:
-        background.add_task(_qualify_in_background, [l["id"] for l in res["leads"]], website.id)
+        background.add_task(qualify_leads_in_background, [l["id"] for l in res["leads"]], website.id)
     return res
 
 
 @router.post("", status_code=201)
 async def create_lead(payload: LeadIn, website: OwnedWebsite, db: DB, background: BackgroundTasks, qualify: bool = True):
     lead = Lead(website_id=website.id, company=payload.company.strip(), contact_name=payload.contact_name.strip(), email=payload.email.strip(),
-                phone=payload.phone.strip(), website_url=_norm_url(payload.website_url), category=payload.category.strip(),
+                phone=payload.phone.strip(), website_url=normalize_url(payload.website_url), category=payload.category.strip(),
                 location=payload.location.strip(), address=payload.address.strip(), notes=payload.notes, tags=payload.tags,
                 source="manual", status="new", score=0, audit={}, pitch={},
-                activity=[{"at": datetime.now(timezone.utc).isoformat(), "kind": "created", "note": "Added manually"}])
+                activity=[{"at": datetime.now(UTC).isoformat(), "kind": "created", "note": "Added manually"}])
     db.add(lead)
     await db.commit()
     await db.refresh(lead)
     if qualify:
-        background.add_task(_qualify_in_background, [lead.id], website.id)
+        background.add_task(qualify_leads_in_background, [lead.id], website.id)
     return lead_to_dict(lead)
 
 
@@ -194,10 +156,10 @@ async def import_csv(website: OwnedWebsite, db: DB, background: BackgroundTasks,
              "category": "category", "type": "category", "industry": "category", "location": "location", "city": "location",
              "address": "address", "notes": "notes", "note": "notes"}
     existing_hosts = {host_of(l.website_url) for l in (await db.execute(select(Lead).where(Lead.website_id == website.id))).scalars().all() if l.website_url}
-    created: List[Lead] = []
+    created: list[Lead] = []
     skipped = 0
     for row in reader:
-        data: Dict[str, str] = {}
+        data: dict[str, str] = {}
         for k, v in row.items():
             key = alias.get((k or "").strip().lower().replace(" ", "_"))
             if key and v:
@@ -205,7 +167,7 @@ async def import_csv(website: OwnedWebsite, db: DB, background: BackgroundTasks,
         if not data.get("company") and not data.get("website_url"):
             skipped += 1
             continue
-        url = _norm_url(data.get("website_url", ""))
+        url = normalize_url(data.get("website_url", ""))
         h = host_of(url)
         if h and h in existing_hosts:
             skipped += 1
@@ -215,7 +177,7 @@ async def import_csv(website: OwnedWebsite, db: DB, background: BackgroundTasks,
         lead = Lead(website_id=website.id, company=data.get("company") or h, website_url=url, phone=data.get("phone", ""), email=data.get("email", ""),
                     contact_name=data.get("contact_name", ""), category=data.get("category", ""), location=data.get("location", ""),
                     address=data.get("address", ""), notes=data.get("notes", ""), source="csv", status="new", score=0, audit={}, pitch={}, tags=[],
-                    activity=[{"at": datetime.now(timezone.utc).isoformat(), "kind": "created", "note": f"Imported from {file.filename}"}])
+                    activity=[{"at": datetime.now(UTC).isoformat(), "kind": "created", "note": f"Imported from {file.filename}"}])
         db.add(lead)
         created.append(lead)
         if len(created) >= 500:
@@ -224,12 +186,12 @@ async def import_csv(website: OwnedWebsite, db: DB, background: BackgroundTasks,
     for l in created:
         await db.refresh(l)
     if qualify and created:
-        background.add_task(_qualify_in_background, [l.id for l in created], website.id)
+        background.add_task(qualify_leads_in_background, [l.id for l in created], website.id)
     return {"created": len(created), "skipped": skipped, "leads": [lead_to_dict(l) for l in created]}
 
 
 @router.get("/export.csv")
-async def export_csv(website: OwnedWebsite, db: DB, status: Optional[str] = None):
+async def export_csv(website: OwnedWebsite, db: DB, status: str | None = None):
     stmt = select(Lead).where(Lead.website_id == website.id)
     if status:
         stmt = stmt.where(Lead.status.in_(status.split(",")))
@@ -249,26 +211,23 @@ async def export_csv(website: OwnedWebsite, db: DB, status: Optional[str] = None
 
 @router.get("/{lead_id}")
 async def get_lead(lead_id: int, website: OwnedWebsite, db: DB):
-    return lead_to_dict(await _get_lead(db, website.id, lead_id))
+    return lead_to_dict(await leads_service.get_lead(db, website.id, lead_id))
 
 
 @router.patch("/{lead_id}")
 async def update_lead(lead_id: int, payload: LeadUpdate, website: OwnedWebsite, db: DB):
-    lead = await _get_lead(db, website.id, lead_id)
+    lead = await leads_service.get_lead(db, website.id, lead_id)
     data = payload.model_dump(exclude_unset=True)
     note = data.pop("activity_note", None)
     status = data.pop("status", None)
     if "website_url" in data:
-        data["website_url"] = _norm_url(data["website_url"] or "")
+        data["website_url"] = normalize_url(data["website_url"] or "")
     for k, v in data.items():
         setattr(lead, k, v)
     if status and status != lead.status:
-        try:
-            set_status(lead, status)
-        except ValueError as exc:
-            raise HTTPException(400, str(exc))
+        set_status(lead, status)
     if note:
-        lead.activity = (lead.activity or []) + [{"at": datetime.now(timezone.utc).isoformat(), "kind": "note", "note": note[:1000]}]
+        lead.activity = (lead.activity or []) + [{"at": datetime.now(UTC).isoformat(), "kind": "note", "note": note[:1000]}]
     await db.commit()
     await db.refresh(lead)
     return lead_to_dict(lead)
@@ -276,16 +235,13 @@ async def update_lead(lead_id: int, payload: LeadUpdate, website: OwnedWebsite, 
 
 @router.post("/{lead_id}/status")
 async def change_status(lead_id: int, payload: StatusIn, website: OwnedWebsite, db: DB):
-    lead = await _get_lead(db, website.id, lead_id)
-    try:
-        set_status(lead, payload.status, payload.note)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
+    lead = await leads_service.get_lead(db, website.id, lead_id)
+    set_status(lead, payload.status, payload.note)
     if payload.schedule_follow_up_days is not None:
-        lead.next_follow_up_at = datetime.now(timezone.utc) + timedelta(days=payload.schedule_follow_up_days)
+        lead.next_follow_up_at = datetime.now(UTC) + timedelta(days=payload.schedule_follow_up_days)
     elif payload.status == "contacted" and lead.next_follow_up_at is None:
         days = ((lead.pitch or {}).get("follow_ups") or [{}])[0].get("day", 3)
-        lead.next_follow_up_at = datetime.now(timezone.utc) + timedelta(days=int(days or 3))
+        lead.next_follow_up_at = datetime.now(UTC) + timedelta(days=int(days or 3))
     elif payload.status in ("won", "lost"):
         lead.next_follow_up_at = None
     await db.commit()
@@ -295,16 +251,16 @@ async def change_status(lead_id: int, payload: StatusIn, website: OwnedWebsite, 
 
 @router.post("/{lead_id}/qualify")
 async def qualify(lead_id: int, website: OwnedWebsite, db: DB):
-    lead = await _get_lead(db, website.id, lead_id)
+    lead = await leads_service.get_lead(db, website.id, lead_id)
     lead = await qualify_lead(db, lead, website)
     return lead_to_dict(lead)
 
 
 @router.post("/{lead_id}/pitch")
 async def regenerate_pitch(lead_id: int, payload: PitchIn, website: OwnedWebsite, db: DB):
-    lead = await _get_lead(db, website.id, lead_id)
+    lead = await leads_service.get_lead(db, website.id, lead_id)
     lead.pitch = await write_pitch(website_ctx(website), lead_to_dict(lead), tone=payload.tone)
-    lead.activity = (lead.activity or []) + [{"at": datetime.now(timezone.utc).isoformat(), "kind": "pitch", "note": f"Pitch rewritten ({payload.tone})"}]
+    lead.activity = (lead.activity or []) + [{"at": datetime.now(UTC).isoformat(), "kind": "pitch", "note": f"Pitch rewritten ({payload.tone})"}]
     await db.commit()
     await db.refresh(lead)
     return lead_to_dict(lead)
@@ -312,7 +268,7 @@ async def regenerate_pitch(lead_id: int, payload: PitchIn, website: OwnedWebsite
 
 @router.delete("/{lead_id}", status_code=204)
 async def delete_lead(lead_id: int, website: OwnedWebsite, db: DB):
-    lead = await _get_lead(db, website.id, lead_id)
+    lead = await leads_service.get_lead(db, website.id, lead_id)
     await db.delete(lead)
     await db.commit()
 
@@ -326,10 +282,8 @@ async def bulk(payload: BulkIn, website: OwnedWebsite, db: DB, background: Backg
         await db.commit()
         return {"updated": len(rows)}
     if payload.action == "status":
-        if payload.status not in STATUSES:
-            raise HTTPException(400, "Unknown status")
         for l in rows:
-            set_status(l, payload.status)
+            set_status(l, payload.status or "")
         await db.commit()
         return {"updated": len(rows)}
     # qualify (re-run even if already qualified)
@@ -337,5 +291,5 @@ async def bulk(payload: BulkIn, website: OwnedWebsite, db: DB, background: Backg
         l.qualified_at = None
         l.qualify_error = ""
     await db.commit()
-    background.add_task(_qualify_in_background, [l.id for l in rows], website.id)
+    background.add_task(qualify_leads_in_background, [l.id for l in rows], website.id)
     return {"updated": len(rows), "queued": True}

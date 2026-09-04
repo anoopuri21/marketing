@@ -12,7 +12,6 @@ import json
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set
 from urllib.parse import urldefrag, urljoin, urlparse
 
 import httpx
@@ -31,8 +30,8 @@ SKIP_EXTENSIONS = (
 class PageData:
     url: str
     final_url: str = ""
-    status_code: Optional[int] = None
-    response_ms: Optional[int] = None
+    status_code: int | None = None
+    response_ms: int | None = None
     content_type: str = ""
     html_bytes: int = 0
     error: str = ""
@@ -45,24 +44,24 @@ class PageData:
     lang: str = ""
     viewport: str = ""
     charset: str = ""
-    h1: List[str] = field(default_factory=list)
-    h2: List[str] = field(default_factory=list)
-    h3: List[str] = field(default_factory=list)
+    h1: list[str] = field(default_factory=list)
+    h2: list[str] = field(default_factory=list)
+    h3: list[str] = field(default_factory=list)
     word_count: int = 0
     text_sample: str = ""
     images_total: int = 0
     images_missing_alt: int = 0
-    internal_links: List[str] = field(default_factory=list)
-    external_links: List[str] = field(default_factory=list)
+    internal_links: list[str] = field(default_factory=list)
+    external_links: list[str] = field(default_factory=list)
     nofollow_links: int = 0
-    structured_data: List[dict] = field(default_factory=list)
-    schema_types: List[str] = field(default_factory=list)
-    og_tags: Dict[str, str] = field(default_factory=dict)
-    twitter_tags: Dict[str, str] = field(default_factory=dict)
-    hreflang: List[str] = field(default_factory=list)
+    structured_data: list[dict] = field(default_factory=list)
+    schema_types: list[str] = field(default_factory=list)
+    og_tags: dict[str, str] = field(default_factory=dict)
+    twitter_tags: dict[str, str] = field(default_factory=dict)
+    hreflang: list[str] = field(default_factory=list)
     has_faq_markup: bool = False
-    faq_questions: List[str] = field(default_factory=list)
-    question_headings: List[str] = field(default_factory=list)
+    faq_questions: list[str] = field(default_factory=list)
+    question_headings: list[str] = field(default_factory=list)
     lists_count: int = 0
     tables_count: int = 0
     has_author: bool = False
@@ -78,7 +77,7 @@ class PageData:
     has_address_hint: bool = False
     verification_meta: str = ""
     content_fingerprint: str = ""
-    headers: Dict[str, str] = field(default_factory=dict)
+    headers: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         d = self.__dict__.copy()
@@ -94,24 +93,24 @@ class SiteData:
     domain: str
     final_home_url: str = ""
     https: bool = False
-    http_redirects_to_https: Optional[bool] = None
-    www_redirect_ok: Optional[bool] = None
+    http_redirects_to_https: bool | None = None
+    www_redirect_ok: bool | None = None
     robots_txt_found: bool = False
     robots_txt_content: str = ""
     robots_blocks_all: bool = False
-    robots_blocks_ai_bots: List[str] = field(default_factory=list)
-    robots_allows_ai_bots: List[str] = field(default_factory=list)
-    sitemap_urls: List[str] = field(default_factory=list)
+    robots_blocks_ai_bots: list[str] = field(default_factory=list)
+    robots_allows_ai_bots: list[str] = field(default_factory=list)
+    sitemap_urls: list[str] = field(default_factory=list)
     sitemap_found: bool = False
     sitemap_url_count: int = 0
     llms_txt_found: bool = False
-    security_headers: Dict[str, str] = field(default_factory=dict)
+    security_headers: dict[str, str] = field(default_factory=dict)
     server_header: str = ""
-    pages: List[PageData] = field(default_factory=list)
-    broken_links: List[dict] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
+    pages: list[PageData] = field(default_factory=list)
+    broken_links: list[dict] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
     crawl_seconds: float = 0.0
-    home_ttfb_ms: Optional[int] = None
+    home_ttfb_ms: int | None = None
     tls_invalid: bool = False
     tls_error: str = ""
 
@@ -312,7 +311,7 @@ def parse_html(page: PageData, html: str) -> None:
                 break
 
     # Links
-    seen: Set[str] = set()
+    seen: set[str] = set()
     for a in soup.find_all("a", href=True):
         href = a.get("href").strip()
         if not href or href.startswith(("#", "mailto:", "tel:", "javascript:", "sms:", "whatsapp:")):
@@ -352,7 +351,7 @@ def parse_html(page: PageData, html: str) -> None:
 
 
 class Crawler:
-    def __init__(self, start_url: str, max_pages: Optional[int] = None):
+    def __init__(self, start_url: str, max_pages: int | None = None):
         self.start_url = start_url.rstrip("/")
         self.max_pages = max_pages or settings.crawl_max_pages
         self.domain = urlparse(self.start_url).netloc.lower()
@@ -360,7 +359,7 @@ class Crawler:
         self._client = make_client()
         self._semaphore = asyncio.Semaphore(settings.crawl_concurrency)
 
-    async def __aenter__(self) -> "Crawler":
+    async def __aenter__(self) -> Crawler:
         return self
 
     async def __aexit__(self, *exc) -> None:
@@ -389,7 +388,7 @@ class Crawler:
         page.final_url = str(resp.url)
         page.redirected = len(resp.history) > 0
         page.content_type = resp.headers.get("content-type", "")
-        page.headers = {k.lower(): v for k, v in resp.headers.items() if k.lower() in SECURITY_HEADERS + ["server", "cache-control", "content-encoding", "x-robots-tag"]}
+        page.headers = {k.lower(): v for k, v in resp.headers.items() if k.lower() in [*SECURITY_HEADERS, "server", "cache-control", "content-encoding", "x-robots-tag"]}
         if "text/html" in page.content_type or "application/xhtml" in page.content_type:
             html = resp.text
             page.html_bytes = len(resp.content)
@@ -399,7 +398,7 @@ class Crawler:
                 page.error = f"parse error: {exc}"[:300]
         return page
 
-    async def fetch_text(self, url: str) -> Optional[httpx.Response]:
+    async def fetch_text(self, url: str) -> httpx.Response | None:
         try:
             resp = await self._client.get(url)
             return resp
@@ -414,8 +413,8 @@ class Crawler:
             self.site.robots_txt_found = True
             content = resp.text[:20000]
             self.site.robots_txt_content = content
-            current_agents: List[str] = []
-            blocks: Dict[str, List[str]] = {}
+            current_agents: list[str] = []
+            blocks: dict[str, list[str]] = {}
             for line in content.splitlines():
                 line = line.split("#", 1)[0].strip()
                 if not line:
@@ -448,10 +447,10 @@ class Crawler:
         if llms is not None and llms.status_code == 200 and "html" not in llms.headers.get("content-type", "").lower():
             self.site.llms_txt_found = True
 
-    async def _check_sitemap(self) -> List[str]:
+    async def _check_sitemap(self) -> list[str]:
         base = f"{urlparse(self.site.final_home_url or self.start_url).scheme}://{urlparse(self.site.final_home_url or self.start_url).netloc}"
-        candidates = list(dict.fromkeys(self.site.sitemap_urls + [base + "/sitemap.xml", base + "/sitemap_index.xml"]))
-        discovered: List[str] = []
+        candidates = list(dict.fromkeys([*self.site.sitemap_urls, base + "/sitemap.xml", base + "/sitemap_index.xml"]))
+        discovered: list[str] = []
         for candidate in candidates[:4]:
             resp = await self.fetch_text(candidate)
             if resp is None or resp.status_code != 200:
@@ -516,8 +515,8 @@ class Crawler:
         await asyncio.gather(self._check_robots(), self._check_protocol_variants())
         sitemap_urls = await self._check_sitemap()
 
-        visited: Set[str] = {normalise_url(self.start_url + "/"), normalise_url(self.site.final_home_url)}
-        queue: List[str] = []
+        visited: set[str] = {normalise_url(self.start_url + "/"), normalise_url(self.site.final_home_url)}
+        queue: list[str] = []
         for link in home.internal_links + sitemap_urls:
             n = normalise_url(link)
             if n in visited or n in queue:
@@ -550,6 +549,6 @@ class Crawler:
         return self.site
 
 
-async def crawl_site(start_url: str, max_pages: Optional[int] = None) -> SiteData:
+async def crawl_site(start_url: str, max_pages: int | None = None) -> SiteData:
     async with Crawler(start_url, max_pages=max_pages) as crawler:
         return await crawler.crawl()

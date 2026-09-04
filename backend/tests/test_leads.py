@@ -1,8 +1,7 @@
 """Lead finder: discovery providers (SerpAPI via MockTransport + demo), qualification, pitch and pipeline API."""
 import asyncio
 import io
-import json
-from typing import Iterator
+from collections.abc import Iterator
 
 import httpx
 import pytest
@@ -97,7 +96,7 @@ def test_gaps_and_opportunity_score():
     strong = qual_mod.opportunity_score([], 92.0, {"phone": "", "reviews": 0, "rating": 4.9})
     no_site = qual_mod.opportunity_score([qual_mod._gap("NO_WEBSITE")], None, {"phone": "+91 1", "reviews": 25, "rating": 4.0})
     assert weak > 60 and strong < 15 and no_site >= 70
-    assert 0 <= strong and no_site <= 100
+    assert strong >= 0 and no_site <= 100
 
 
 def test_qualify_website_uses_crawler(monkeypatch):
@@ -206,8 +205,8 @@ def test_manual_lead_real_crawl_qualify_and_pipeline(client: TestClient, auth: d
 
 
 def test_csv_import_export_bulk_and_isolation(client: TestClient, auth: dict, site_id: int):
-    csv_bytes = ("Company,Website,Phone,City,Notes\nBeta Bakers,beta-bakers.test,+91 90000 00000,Delhi,walk-in\n"
-                 "Dup Bakers,https://beta-bakers.test/x,,Delhi,dup host\n,,,,\nGamma Gym,,,Noida,no site\n").encode()
+    csv_bytes = (b"Company,Website,Phone,City,Notes\nBeta Bakers,beta-bakers.test,+91 90000 00000,Delhi,walk-in\n"
+                 b"Dup Bakers,https://beta-bakers.test/x,,Delhi,dup host\n,,,,\nGamma Gym,,,Noida,no site\n")
     r = client.post(f"/api/websites/{site_id}/leads/import?qualify=false", files={"file": ("leads.csv", io.BytesIO(csv_bytes), "text/csv")}, headers=auth)
     assert r.status_code == 200, r.text
     assert r.json()["created"] == 2 and r.json()["skipped"] == 2

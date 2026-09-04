@@ -4,7 +4,8 @@ from __future__ import annotations
 import logging
 import re
 from collections import Counter
-from typing import Any, Dict, List, Optional
+from itertools import pairwise
+from typing import Any
 from urllib.parse import urlparse
 
 from app.services.ai.provider import ai_client
@@ -12,26 +13,22 @@ from app.services.ai.provider import ai_client
 log = logging.getLogger(__name__)
 
 STOPWORDS = set(
-    """a an the and or of to in for on with at by from is are was were be been being this that these those it its
-    as your you we our us they them their he she his her i my me not no yes but if then than so such can will just
-    about into over under more most very also all any each few other some own same too s t don should now here there
-    home page welcome contact us menu click read learn get new best top free online copyright rights reserved privacy
-    policy terms cookies login sign up log in""".split()
+    ["a", "an", "the", "and", "or", "of", "to", "in", "for", "on", "with", "at", "by", "from", "is", "are", "was", "were", "be", "been", "being", "this", "that", "these", "those", "it", "its", "as", "your", "you", "we", "our", "us", "they", "them", "their", "he", "she", "his", "her", "i", "my", "me", "not", "no", "yes", "but", "if", "then", "than", "so", "such", "can", "will", "just", "about", "into", "over", "under", "more", "most", "very", "also", "all", "any", "each", "few", "other", "some", "own", "same", "too", "s", "t", "don", "should", "now", "here", "there", "home", "page", "welcome", "contact", "us", "menu", "click", "read", "learn", "get", "new", "best", "top", "free", "online", "copyright", "rights", "reserved", "privacy", "policy", "terms", "cookies", "login", "sign", "up", "log", "in"]
 )
 
 
 # --------------------------------------------------------------------------- #
 # Audit insights
 # --------------------------------------------------------------------------- #
-def _issue_digest(issues: List[Dict[str, Any]], limit: int = 25) -> str:
+def _issue_digest(issues: list[dict[str, Any]], limit: int = 25) -> str:
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
     top = sorted(issues, key=lambda i: order.get(i["severity"], 5))[:limit]
     lines = [f"- [{i['severity']}] ({i['category']}) {i['title']}" + (f" @ {i['page_url']}" if i.get("page_url") else "") for i in top]
     return "\n".join(lines)
 
 
-async def generate_audit_insights(website: Dict[str, Any], facts: Dict[str, Any], scores: Dict[str, float],
-                                  issues: List[Dict[str, Any]], homepage_text: str) -> Dict[str, Any]:
+async def generate_audit_insights(website: dict[str, Any], facts: dict[str, Any], scores: dict[str, float],
+                                  issues: list[dict[str, Any]], homepage_text: str) -> dict[str, Any]:
     fallback = _rule_based_insights(website, facts, scores, issues)
     if not ai_client.available:
         return fallback
@@ -70,11 +67,11 @@ Return JSON with keys:
     return fallback
 
 
-def _rule_based_insights(website: Dict[str, Any], facts: Dict[str, Any], scores: Dict[str, float],
-                         issues: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _rule_based_insights(website: dict[str, Any], facts: dict[str, Any], scores: dict[str, float],
+                         issues: list[dict[str, Any]]) -> dict[str, Any]:
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
     sorted_issues = sorted(issues, key=lambda i: (order.get(i["severity"], 5), -i.get("impact", 0)))
-    unique: Dict[str, Dict[str, Any]] = {}
+    unique: dict[str, dict[str, Any]] = {}
     for i in sorted_issues:
         unique.setdefault(i["code"], i)
     top = list(unique.values())
@@ -139,19 +136,19 @@ def _rule_based_insights(website: Dict[str, Any], facts: Dict[str, Any], scores:
 # --------------------------------------------------------------------------- #
 # Keyword suggestions
 # --------------------------------------------------------------------------- #
-def _extract_terms(text: str, top_n: int = 15) -> List[str]:
+def _extract_terms(text: str, top_n: int = 15) -> list[str]:
     words = [w for w in re.findall(r"[a-zA-Z][a-zA-Z\-]{2,}", text.lower()) if w not in STOPWORDS]
     uni = Counter(words)
-    bigrams = Counter(f"{a} {b}" for a, b in zip(words, words[1:]) if a not in STOPWORDS and b not in STOPWORDS)
+    bigrams = Counter(f"{a} {b}" for a, b in pairwise(words) if a not in STOPWORDS and b not in STOPWORDS)
     terms = [t for t, _ in bigrams.most_common(top_n)] + [t for t, _ in uni.most_common(top_n)]
-    out: List[str] = []
+    out: list[str] = []
     for t in terms:
         if t not in out:
             out.append(t)
     return out[:top_n]
 
 
-async def suggest_keywords(website: Dict[str, Any], page_texts: List[str], titles: List[str], existing: List[str]) -> Dict[str, Any]:
+async def suggest_keywords(website: dict[str, Any], page_texts: list[str], titles: list[str], existing: list[str]) -> dict[str, Any]:
     corpus = " ".join(titles) + " " + " ".join(page_texts)
     site_terms = _extract_terms(corpus, top_n=20)
     if ai_client.available:
@@ -173,7 +170,7 @@ Give 15 suggestions, mixing local (if applicable), commercial and question-style
     # Fallback: combine industry/location with site terms
     ind = (website.get("industry") or "").strip()
     loc = (website.get("target_location") or "").strip()
-    cands: List[Dict[str, str]] = []
+    cands: list[dict[str, str]] = []
     if ind:
         base = [ind, f"best {ind}", f"{ind} near me", f"{ind} cost", f"{ind} price", f"affordable {ind}", f"{ind} services", f"how to choose {ind}"]
         for b in base:
@@ -197,8 +194,8 @@ Give 15 suggestions, mixing local (if applicable), commercial and question-style
 # --------------------------------------------------------------------------- #
 # Action plan
 # --------------------------------------------------------------------------- #
-async def generate_plan(website: Dict[str, Any], issues: List[Dict[str, Any]], scores: Dict[str, float],
-                        keywords: List[str], horizon_weeks: int, focus: str) -> Dict[str, Any]:
+async def generate_plan(website: dict[str, Any], issues: list[dict[str, Any]], scores: dict[str, float],
+                        keywords: list[str], horizon_weeks: int, focus: str) -> dict[str, Any]:
     fallback = _rule_based_plan(website, issues, scores, keywords, horizon_weeks, focus)
     if not ai_client.available:
         return fallback
@@ -223,10 +220,10 @@ Return JSON: {{"strategy_summary": "2-3 sentences", "weeks": [{{"week": 1, "them
     return fallback
 
 
-def _rule_based_plan(website: Dict[str, Any], issues: List[Dict[str, Any]], scores: Dict[str, float],
-                     keywords: List[str], horizon_weeks: int, focus: str) -> Dict[str, Any]:
+def _rule_based_plan(website: dict[str, Any], issues: list[dict[str, Any]], scores: dict[str, float],
+                     keywords: list[str], horizon_weeks: int, focus: str) -> dict[str, Any]:
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
-    unique: Dict[str, Dict[str, Any]] = {}
+    unique: dict[str, dict[str, Any]] = {}
     for i in sorted(issues, key=lambda i: order.get(i["severity"], 5)):
         unique.setdefault(i["code"], i)
     fix_tasks = [
@@ -240,7 +237,7 @@ def _rule_based_plan(website: Dict[str, Any], issues: List[Dict[str, Any]], scor
     kw = keywords[:3] if keywords else [f"{ind}{loc_sfx}"]
     library = [
         ("Foundation & critical fixes", fix_tasks[:5] or [{"title": "Set up Google Search Console & Analytics", "description": "Verify the domain, submit the sitemap, enable GA4.", "category": "technical", "priority": "high"}]),
-        ("On-page optimisation", fix_tasks[5:9] + [
+        ("On-page optimisation", [*fix_tasks[5:9],
             {"title": f"Optimise homepage for '{kw[0]}'", "description": "Rewrite title, H1, first paragraph and meta description around the primary keyword; add internal links to service pages.", "category": "seo", "priority": "high"},
             {"title": "Set up Google Business Profile" if loc else "Complete Organization schema", "description": "Claim/complete the profile with categories, photos, hours, services and a weekly post cadence." if loc else "Add JSON-LD with logo, sameAs, contact and address.", "category": "aeo", "priority": "high"},
         ]),
@@ -282,7 +279,7 @@ def _rule_based_plan(website: Dict[str, Any], issues: List[Dict[str, Any]], scor
 # --------------------------------------------------------------------------- #
 # Social post drafts (used by phase-2 UI, exposed via API now)
 # --------------------------------------------------------------------------- #
-async def draft_social_posts(website: Dict[str, Any], topic: str, platforms: List[str], tone: str = "friendly") -> Dict[str, Any]:
+async def draft_social_posts(website: dict[str, Any], topic: str, platforms: list[str], tone: str = "friendly") -> dict[str, Any]:
     if ai_client.available:
         system = "You are a social media copywriter for small businesses. Write platform-native posts with hooks, value and a CTA."
         user = f"""Business: {website.get('name')} ({website.get('url')}) | Industry: {website.get('industry')} | Location: {website.get('target_location')}

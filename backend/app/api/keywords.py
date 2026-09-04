@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import List
-
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -22,12 +20,12 @@ def _to_out(kw: Keyword) -> KeywordOut:
     return base
 
 
-@router.get("", response_model=List[KeywordOut])
+@router.get("", response_model=list[KeywordOut])
 async def list_keywords(website: OwnedWebsite, db: DB):
     return [_to_out(k) for k in await load_keywords(db, website.id)]
 
 
-@router.post("", response_model=List[KeywordOut], status_code=201)
+@router.post("", response_model=list[KeywordOut], status_code=201)
 async def add_keywords(payload: KeywordCreate, website: OwnedWebsite, db: DB):
     existing = {(k.term.lower(), k.location.lower()) for k in await load_keywords(db, website.id)}
     created = []
@@ -54,7 +52,6 @@ async def delete_keyword(keyword_id: int, website: OwnedWebsite, db: DB):
         raise HTTPException(status_code=404, detail="Keyword not found")
     await db.delete(kw)
     await db.commit()
-    return None
 
 
 @router.get("/{keyword_id}", response_model=KeywordDetailOut)
@@ -69,7 +66,7 @@ async def keyword_detail(keyword_id: int, website: OwnedWebsite, db: DB):
     return base
 
 
-@router.post("/check", response_model=List[KeywordOut])
+@router.post("/check", response_model=list[KeywordOut])
 async def check_ranks(website: OwnedWebsite, db: DB):
     await check_all_for_website(db, website.id)
     await db.commit()
@@ -84,7 +81,8 @@ async def check_one(keyword_id: int, website: OwnedWebsite, db: DB):
     await check_keyword(db, kw, website)
     await db.commit()
     stmt = select(Keyword).where(Keyword.id == keyword_id).options(selectinload(Keyword.ranks))
-    return _to_out((await db.execute(stmt)).scalars().first())
+    refreshed = (await db.execute(stmt)).scalars().one()
+    return _to_out(refreshed)
 
 
 @router.post("/suggest", response_model=KeywordSuggestResponse)

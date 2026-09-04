@@ -1,8 +1,8 @@
 """Async SQLAlchemy engine / session management."""
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -81,6 +81,6 @@ def _add_missing_columns(sync_conn) -> None:
             col_type = column.type.compile(dialect=sync_conn.dialect)
             default = ""
             if column.default is not None and getattr(column.default, "is_scalar", False):
-                arg = column.default.arg
+                arg = getattr(column.default, "arg", None)
                 default = f" DEFAULT {'1' if arg is True else '0' if arg is False else repr(arg)}"
             sync_conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {col_type}{default}'))

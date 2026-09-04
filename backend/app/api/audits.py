@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import List
-
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -14,7 +12,7 @@ from app.services.audit.engine import run_audit
 router = APIRouter(prefix="/api/websites/{website_id}/audits", tags=["audits"])
 
 
-@router.get("", response_model=List[AuditSummaryOut])
+@router.get("", response_model=list[AuditSummaryOut])
 async def list_audits(website: OwnedWebsite, db: DB, limit: int = 20):
     stmt = select(Audit).where(Audit.website_id == website.id).order_by(Audit.created_at.desc()).limit(min(limit, 100))
     return (await db.execute(stmt)).scalars().all()

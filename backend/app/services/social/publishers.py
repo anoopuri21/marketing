@@ -13,11 +13,12 @@ Supported today
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 from urllib.parse import quote
 
 import httpx
@@ -30,7 +31,7 @@ GRAPH = "https://graph.facebook.com/v21.0"
 LINKEDIN = "https://api.linkedin.com/rest"
 X_API = "https://api.x.com/2"
 
-PLATFORMS: Dict[str, Dict[str, Any]] = {
+PLATFORMS: dict[str, dict[str, Any]] = {
     "facebook": {
         "label": "Facebook Page", "status": "live", "fields": ["page_id", "access_token"], "optional_fields": [], "max_chars": 63206,
         "help": "Create a Meta app, add the Pages API, generate a long-lived Page access token with pages_manage_posts + pages_read_engagement, "
@@ -94,7 +95,7 @@ def _err(resp: httpx.Response, what: str) -> PublishError:
 
 
 # --------------------------------------------------------------------------- #
-async def publish_facebook(cfg: Dict[str, Any], text: str, image_url: Optional[str], link_url: str = "") -> Dict[str, str]:
+async def publish_facebook(cfg: dict[str, Any], text: str, image_url: str | None, link_url: str = "") -> dict[str, str]:
     page_id, token = cfg.get("page_id", "").strip(), cfg.get("access_token", "").strip()
     if not page_id or not token:
         raise PublishError("Facebook page_id and access_token are required")
@@ -116,7 +117,7 @@ async def publish_facebook(cfg: Dict[str, Any], text: str, image_url: Optional[s
     return {"external_id": post_id, "external_url": f"https://www.facebook.com/{post_id}" if post_id else ""}
 
 
-async def publish_instagram(cfg: Dict[str, Any], text: str, image_url: Optional[str], link_url: str = "") -> Dict[str, str]:
+async def publish_instagram(cfg: dict[str, Any], text: str, image_url: str | None, link_url: str = "") -> dict[str, str]:
     account_id, token = cfg.get("account_id", "").strip(), cfg.get("access_token", "").strip()
     if not account_id or not token:
         raise PublishError("Instagram account_id and access_token are required")
@@ -139,13 +140,13 @@ async def publish_instagram(cfg: Dict[str, Any], text: str, image_url: Optional[
     return {"external_id": media_id, "external_url": permalink}
 
 
-async def publish_linkedin(cfg: Dict[str, Any], text: str, image_url: Optional[str], link_url: str = "") -> Dict[str, str]:
+async def publish_linkedin(cfg: dict[str, Any], text: str, image_url: str | None, link_url: str = "") -> dict[str, str]:
     org, token = cfg.get("organization_id", "").strip(), cfg.get("access_token", "").strip()
     if not org or not token:
         raise PublishError("LinkedIn organization_id and access_token are required")
     author = org if org.startswith("urn:") else f"urn:li:organization:{org}"
     headers = {"Authorization": f"Bearer {token}", "LinkedIn-Version": "202409", "X-Restli-Protocol-Version": "2.0.0", "Content-Type": "application/json"}
-    body: Dict[str, Any] = {"author": author, "commentary": text, "visibility": "PUBLIC", "distribution": {"feedDistribution": "MAIN_FEED", "targetEntities": [], "thirdPartyDistributionChannels": []}, "lifecycleState": "PUBLISHED", "isReshareDisabledByAuthor": False}
+    body: dict[str, Any] = {"author": author, "commentary": text, "visibility": "PUBLIC", "distribution": {"feedDistribution": "MAIN_FEED", "targetEntities": [], "thirdPartyDistributionChannels": []}, "lifecycleState": "PUBLISHED", "isReshareDisabledByAuthor": False}
     async with await _client() as client:
         if image_url:
             init = await client.post(f"{LINKEDIN}/images?action=initializeUpload", headers=headers, json={"initializeUploadRequest": {"owner": author}})
@@ -160,7 +161,7 @@ async def publish_linkedin(cfg: Dict[str, Any], text: str, image_url: Optional[s
                 raise _err(up, "LinkedIn image upload")
             body["content"] = {"media": {"id": val["image"], "altText": text[:120]}}
         elif link_url:
-            body["content"] = {"article": {"source": link_url, "title": text.split("\n")[0][:200]}}
+            body["content"] = {"article": {"source": link_url, "title": text.split("\n", maxsplit=1)[0][:200]}}
         resp = await client.post(f"{LINKEDIN}/posts", headers=headers, json=body)
         if resp.status_code not in (200, 201):
             raise _err(resp, "LinkedIn post")
@@ -168,7 +169,7 @@ async def publish_linkedin(cfg: Dict[str, Any], text: str, image_url: Optional[s
     return {"external_id": post_urn, "external_url": f"https://www.linkedin.com/feed/update/{quote(post_urn, safe='')}" if post_urn else ""}
 
 
-async def publish_x(cfg: Dict[str, Any], text: str, image_url: Optional[str], link_url: str = "") -> Dict[str, str]:
+async def publish_x(cfg: dict[str, Any], text: str, image_url: str | None, link_url: str = "") -> dict[str, str]:
     token = cfg.get("access_token", "").strip()
     if not token:
         raise PublishError("X access_token (OAuth 2.0 user token with tweet.write) is required")
@@ -180,7 +181,7 @@ async def publish_x(cfg: Dict[str, Any], text: str, image_url: Optional[str], li
     return {"external_id": tweet_id, "external_url": f"https://x.com/i/web/status/{tweet_id}" if tweet_id else ""}
 
 
-async def publish_webhook(cfg: Dict[str, Any], text: str, image_url: Optional[str], link_url: str = "", extra: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+async def publish_webhook(cfg: dict[str, Any], text: str, image_url: str | None, link_url: str = "", extra: dict[str, Any] | None = None) -> dict[str, str]:
     url = cfg.get("url", "").strip()
     if not url.startswith("http"):
         raise PublishError("Webhook url must start with http(s)://")
@@ -194,18 +195,16 @@ async def publish_webhook(cfg: Dict[str, Any], text: str, image_url: Optional[st
     if resp.status_code >= 300:
         raise _err(resp, "Webhook")
     ext_id = ""
-    try:
+    with contextlib.suppress(Exception):
         ext_id = str(resp.json().get("id", ""))
-    except Exception:
-        pass
     return {"external_id": ext_id, "external_url": ""}
 
 
 PUBLISHERS = {"facebook": publish_facebook, "instagram": publish_instagram, "linkedin": publish_linkedin, "x": publish_x, "webhook": publish_webhook}
 
 
-async def publish(platform: str, cfg: Dict[str, Any], content: str, hashtags: list, image_url: Optional[str], link_url: str = "",
-                  extra: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+async def publish(platform: str, cfg: dict[str, Any], content: str, hashtags: list, image_url: str | None, link_url: str = "",
+                  extra: dict[str, Any] | None = None) -> dict[str, str]:
     fn = PUBLISHERS.get(platform)
     if fn is None:
         raise PublishError(f"Publishing to {platform} is not supported yet")
@@ -218,3 +217,32 @@ async def publish(platform: str, cfg: Dict[str, Any], content: str, hashtags: li
         raise
     except httpx.HTTPError as exc:
         raise PublishError(f"Could not reach {platform} ({type(exc).__name__}: {exc or 'connection failed'}). Check outbound internet access.") from exc
+
+
+async def verify_channel(platform: str, cfg: dict[str, Any], *, site_url: str, site_domain: str) -> tuple[bool, str]:
+    """Connection test: webhooks receive a test payload; API channels get a cheap read call with the token.
+
+    Never raises – returns (ok, human-readable detail).
+    """
+    try:
+        if platform == "webhook":
+            await publish_webhook(cfg, f"RankPilot test message for {site_domain}", None, site_url, {"test": True, "platform": "webhook"})
+            return True, "Webhook accepted the test payload"
+        async with await _client() as client:
+            if platform in ("facebook", "instagram"):
+                obj = cfg.get("page_id") if platform == "facebook" else cfg.get("account_id")
+                resp = await client.get(f"{GRAPH}/{obj}", params={"fields": "id,name,username", "access_token": cfg.get("access_token", "")})
+                if resp.status_code == 200:
+                    return True, f"Connected to {resp.json().get('name') or resp.json().get('username') or obj}"
+                return False, resp.json().get("error", {}).get("message", resp.text[:200])
+            if platform == "linkedin":
+                org = cfg.get("organization_id", "")
+                resp = await client.get(f"{LINKEDIN}/organizations/{org}",
+                                        headers={"Authorization": f"Bearer {cfg.get('access_token', '')}", "LinkedIn-Version": "202409"})
+                return (True, f"Connected to {resp.json().get('localizedName', org)}") if resp.status_code == 200 else (False, resp.text[:200])
+            if platform == "x":
+                resp = await client.get(f"{X_API}/users/me", headers={"Authorization": f"Bearer {cfg.get('access_token', '')}"})
+                return (True, f"Connected as @{resp.json().get('data', {}).get('username', '?')}") if resp.status_code == 200 else (False, resp.text[:200])
+        return False, f"No connection test available for {platform}"
+    except Exception as exc:
+        return False, f"Could not reach {platform} ({type(exc).__name__}: {exc or 'connection failed'})"

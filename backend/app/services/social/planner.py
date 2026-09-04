@@ -8,8 +8,8 @@ from __future__ import annotations
 import logging
 import random
 import re
-from datetime import datetime, time, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, time, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from app.services.ai.provider import ai_client
@@ -17,7 +17,7 @@ from app.services.ai.provider import ai_client
 log = logging.getLogger(__name__)
 
 # Best-practice posting windows (local time) per platform – used when scheduling a plan.
-BEST_TIMES: Dict[str, List[time]] = {
+BEST_TIMES: dict[str, list[time]] = {
     "instagram": [time(11, 0), time(19, 0)],
     "facebook": [time(13, 0), time(20, 0)],
     "linkedin": [time(9, 0), time(12, 30)],
@@ -45,8 +45,8 @@ def short_topic(topic: str, max_words: int = 7) -> str:
     return t.strip(" ?!.,").strip()
 
 
-async def generate_calendar(website: Dict[str, Any], platforms: List[str], weeks: int, posts_per_week: int, tone: str,
-                            themes: List[str], queries: List[str], content_ideas: List[Dict[str, Any]], goals: str = "") -> Dict[str, Any]:
+async def generate_calendar(website: dict[str, Any], platforms: list[str], weeks: int, posts_per_week: int, tone: str,
+                            themes: list[str], queries: list[str], content_ideas: list[dict[str, Any]], goals: str = "") -> dict[str, Any]:
     """Return {"provider", "strategy", "posts": [{week, day_offset, platform, type, topic, content, hashtags, creative: {...}}]}."""
     total = weeks * posts_per_week
     if ai_client.available:
@@ -82,8 +82,8 @@ Return JSON: {{"strategy": "2-3 sentences", "posts": [{{"week": 1, "day_offset":
     return _rule_based_calendar(website, platforms, weeks, posts_per_week, tone, themes, queries, content_ideas)
 
 
-def _rule_based_calendar(website: Dict[str, Any], platforms: List[str], weeks: int, posts_per_week: int, tone: str,
-                         themes: List[str], queries: List[str], content_ideas: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _rule_based_calendar(website: dict[str, Any], platforms: list[str], weeks: int, posts_per_week: int, tone: str,
+                         themes: list[str], queries: list[str], content_ideas: list[dict[str, Any]]) -> dict[str, Any]:
     name = website.get("name") or website.get("url", "").replace("https://", "").replace("http://", "")
     industry = website.get("industry") or "our field"
     location = website.get("target_location") or ""
@@ -91,7 +91,7 @@ def _rule_based_calendar(website: Dict[str, Any], platforms: List[str], weeks: i
     url = website.get("url", "")
     # Interleave sources so a short calendar still mixes real queries, keyword themes and audit content ideas
     sources = [[str(q) for q in queries[:10]], [str(t) for t in themes], [c.get("title", "") for c in content_ideas if c.get("title")]]
-    topics: List[str] = []
+    topics: list[str] = []
     for i in range(max((len(src) for src in sources), default=0)):
         for src in sources:
             if i < len(src):
@@ -99,7 +99,7 @@ def _rule_based_calendar(website: Dict[str, Any], platforms: List[str], weeks: i
     topics = [t for t in dict.fromkeys(t.strip() for t in topics) if t] or [f"{industry}{loc}", f"how to choose the right {industry} partner", f"common {industry} mistakes"]
     rng = random.Random(f"{name}{weeks}{posts_per_week}")
     base_tags = [_hashtag(industry)] + ([_hashtag(location)] if location else []) + ["#SmallBusiness", _hashtag(name)]
-    posts: List[Dict[str, Any]] = []
+    posts: list[dict[str, Any]] = []
     day_slots = [0, 2, 4, 1, 3, 5, 6]
     i = 0
     for week in range(1, weeks + 1):
@@ -155,7 +155,7 @@ def _copy_for(ptype: str, topic: str, name: str, industry: str, location: str, u
             f"New: {t}", f"Fresh from {name}", "Take a look")
 
 
-def schedule_times(posts: List[Dict[str, Any]], start: datetime, tz_name: str) -> List[datetime]:
+def schedule_times(posts: list[dict[str, Any]], start: datetime, tz_name: str) -> list[datetime]:
     """Assign a concrete UTC datetime to each planned post using best-practice local posting windows."""
     try:
         tz = ZoneInfo(tz_name or "UTC")
@@ -164,8 +164,8 @@ def schedule_times(posts: List[Dict[str, Any]], start: datetime, tz_name: str) -
     start_local = start.astimezone(tz)
     # start on the next day so the client can review first
     day0 = (start_local + timedelta(days=1)).date()
-    out: List[datetime] = []
-    per_day_count: Dict[Any, int] = {}
+    out: list[datetime] = []
+    per_day_count: dict[Any, int] = {}
     for p in posts:
         d = day0 + timedelta(days=(int(p.get("week", 1)) - 1) * 7 + int(p.get("day_offset", 0)))
         windows = BEST_TIMES.get(p.get("platform", ""), [time(10, 0)])
@@ -173,5 +173,5 @@ def schedule_times(posts: List[Dict[str, Any]], start: datetime, tz_name: str) -
         per_day_count[(d, p.get("platform"))] = n + 1
         slot = windows[n % len(windows)]
         local_dt = datetime.combine(d, slot, tzinfo=tz) + timedelta(minutes=15 * (n // len(windows)))
-        out.append(local_dt.astimezone(timezone.utc))
+        out.append(local_dt.astimezone(UTC))
     return out

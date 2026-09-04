@@ -9,8 +9,7 @@ Adding another provider (DataForSEO, ValueSERP, Google Search Console) = one mor
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
@@ -28,8 +27,8 @@ def _host(url: str) -> str:
     return urlparse(url).netloc.lower().removeprefix("www.")
 
 
-async def _serpapi_lookup(term: str, domain: str, location: str, language: str) -> Dict:
-    params = {
+async def _serpapi_lookup(term: str, domain: str, location: str, language: str) -> dict:
+    params: dict[str, str | int] = {
         "engine": "google", "q": term, "api_key": settings.serpapi_key, "num": 100, "hl": language or "en",
     }
     if location:
@@ -38,7 +37,7 @@ async def _serpapi_lookup(term: str, domain: str, location: str, language: str) 
         resp = await client.get("https://serpapi.com/search.json", params=params)
         resp.raise_for_status()
         data = resp.json()
-    position: Optional[int] = None
+    position: int | None = None
     url = ""
     for item in data.get("organic_results", []) or []:
         link = item.get("link", "")
@@ -67,7 +66,7 @@ async def check_keyword(db, keyword: Keyword, website: Website) -> KeywordRank:
     else:
         res = {"position": None, "url": "", "features": {"note": "No SERP provider configured. Set SERPAPI_KEY to enable live rank checks."}, "provider": "none"}
     rank = KeywordRank(
-        keyword_id=keyword.id, checked_at=datetime.now(timezone.utc), position=res["position"], url=res["url"],
+        keyword_id=keyword.id, checked_at=datetime.now(UTC), position=res["position"], url=res["url"],
         engine="google", provider=res["provider"], features=res["features"],
     )
     db.add(rank)
@@ -99,7 +98,7 @@ def enrich_keyword(kw: Keyword) -> dict:
     }
 
 
-async def load_keywords(db, website_id: int) -> List[Keyword]:
+async def load_keywords(db, website_id: int) -> list[Keyword]:
     stmt = (
         select(Keyword).where(Keyword.website_id == website_id)
         .options(selectinload(Keyword.ranks)).order_by(Keyword.created_at.desc())

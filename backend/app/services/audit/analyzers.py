@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 from app.services.audit.crawler import PageData, SiteData
@@ -39,10 +39,10 @@ class Issue:
 
 @dataclass
 class AnalysisResult:
-    issues: List[Issue] = field(default_factory=list)
-    scores: Dict[str, float] = field(default_factory=dict)
+    issues: list[Issue] = field(default_factory=list)
+    scores: dict[str, float] = field(default_factory=dict)
     overall: float = 0.0
-    facts: Dict[str, object] = field(default_factory=dict)
+    facts: dict[str, Any] = field(default_factory=dict)
 
 
 CATEGORY_WEIGHTS = {
@@ -72,14 +72,14 @@ CRITICAL_CAP_STEP = 10.0
 CRITICAL_CAP_FLOOR = 30.0
 
 
-def _ok_pages(site: SiteData) -> List[PageData]:
+def _ok_pages(site: SiteData) -> list[PageData]:
     return [p for p in site.pages if p.status_code == 200 and "html" in p.content_type.lower()]
 
 
 # --------------------------------------------------------------------------- #
 # Technical
 # --------------------------------------------------------------------------- #
-def analyze_technical(site: SiteData, issues: List[Issue]) -> None:
+def analyze_technical(site: SiteData, issues: list[Issue]) -> None:
     home = site.pages[0] if site.pages else None
     if home is None or home.error or home.status_code is None:
         issues.append(Issue("HOME_UNREACHABLE", "technical", "critical", "Homepage could not be fetched",
@@ -152,7 +152,7 @@ def _same_host(a: str, b: str) -> bool:
 # --------------------------------------------------------------------------- #
 # On-page SEO
 # --------------------------------------------------------------------------- #
-def analyze_seo(site: SiteData, issues: List[Issue]) -> None:
+def analyze_seo(site: SiteData, issues: list[Issue]) -> None:
     pages = _ok_pages(site)
     if not pages:
         return
@@ -221,7 +221,7 @@ def analyze_seo(site: SiteData, issues: List[Issue]) -> None:
 # --------------------------------------------------------------------------- #
 # Content
 # --------------------------------------------------------------------------- #
-def analyze_content(site: SiteData, issues: List[Issue]) -> None:
+def analyze_content(site: SiteData, issues: list[Issue]) -> None:
     pages = _ok_pages(site)
     if not pages:
         return
@@ -259,7 +259,7 @@ def analyze_content(site: SiteData, issues: List[Issue]) -> None:
 # --------------------------------------------------------------------------- #
 # AEO – Answer Engine Optimisation
 # --------------------------------------------------------------------------- #
-def analyze_aeo(site: SiteData, issues: List[Issue]) -> None:
+def analyze_aeo(site: SiteData, issues: list[Issue]) -> None:
     pages = _ok_pages(site)
     if not pages:
         return
@@ -304,7 +304,7 @@ def analyze_aeo(site: SiteData, issues: List[Issue]) -> None:
 # --------------------------------------------------------------------------- #
 # AI search readiness (ChatGPT search, Perplexity, Google AI Overviews, Gemini)
 # --------------------------------------------------------------------------- #
-def analyze_ai_readiness(site: SiteData, issues: List[Issue]) -> None:
+def analyze_ai_readiness(site: SiteData, issues: list[Issue]) -> None:
     pages = _ok_pages(site)
     if not pages:
         return
@@ -331,7 +331,8 @@ def analyze_ai_readiness(site: SiteData, issues: List[Issue]) -> None:
     same_as = False
     for p in pages:
         for sd in p.structured_data:
-            nodes = sd.get("@graph") if isinstance(sd.get("@graph"), list) else [sd]
+            graph = sd.get("@graph")
+            nodes = graph if isinstance(graph, list) else [sd]
             for node in nodes:
                 if isinstance(node, dict) and node.get("sameAs"):
                     same_as = True
@@ -352,7 +353,7 @@ def analyze_ai_readiness(site: SiteData, issues: List[Issue]) -> None:
 # --------------------------------------------------------------------------- #
 # Performance (proxy metrics – no headless browser)
 # --------------------------------------------------------------------------- #
-def analyze_performance(site: SiteData, issues: List[Issue]) -> None:
+def analyze_performance(site: SiteData, issues: list[Issue]) -> None:
     pages = _ok_pages(site)
     if not pages:
         return
@@ -391,7 +392,7 @@ def analyze_performance(site: SiteData, issues: List[Issue]) -> None:
 # --------------------------------------------------------------------------- #
 # Social / brand
 # --------------------------------------------------------------------------- #
-def analyze_social(site: SiteData, issues: List[Issue]) -> None:
+def analyze_social(site: SiteData, issues: list[Issue]) -> None:
     pages = _ok_pages(site)
     if not pages:
         return
@@ -430,23 +431,23 @@ def analyze_social(site: SiteData, issues: List[Issue]) -> None:
 # --------------------------------------------------------------------------- #
 # Scoring
 # --------------------------------------------------------------------------- #
-def compute_scores(issues: List[Issue]) -> Dict[str, float]:
-    penalties: Dict[str, float] = defaultdict(float)
-    seen_codes: Dict[str, int] = defaultdict(int)
+def compute_scores(issues: list[Issue]) -> dict[str, float]:
+    penalties: dict[str, float] = defaultdict(float)
+    seen_codes: dict[str, int] = defaultdict(int)
     for issue in issues:
         # diminishing penalty for the same issue repeating across many pages
         seen_codes[issue.code] += 1
         n = seen_codes[issue.code]
         factor = 1.0 if n == 1 else (0.5 if n <= 3 else (0.25 if n <= 8 else 0.1))
         penalties[issue.category] += issue.impact * factor
-    scores: Dict[str, float] = {}
+    scores: dict[str, float] = {}
     for cat, budget in CATEGORY_BUDGET.items():
         pen = penalties.get(cat, 0.0)
         scores[cat] = round(max(0.0, 100.0 * (1 - pen / budget)), 1)
     return scores
 
 
-def compute_overall(scores: Dict[str, float], issues: Optional[List[Issue]] = None) -> float:
+def compute_overall(scores: dict[str, float], issues: list[Issue] | None = None) -> float:
     total = sum(scores.get(cat, 0.0) * w for cat, w in CATEGORY_WEIGHTS.items())
     if issues:
         critical_codes = {i.code for i in issues if i.severity == "critical"}
@@ -457,7 +458,7 @@ def compute_overall(scores: Dict[str, float], issues: Optional[List[Issue]] = No
 
 
 def analyze(site: SiteData) -> AnalysisResult:
-    issues: List[Issue] = []
+    issues: list[Issue] = []
     analyze_technical(site, issues)
     analyze_seo(site, issues)
     analyze_content(site, issues)

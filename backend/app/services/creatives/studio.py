@@ -6,20 +6,20 @@ import logging
 import re
 import secrets
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 from PIL import Image
 
 from app.core.config import settings
 from app.core.http import ssl_context
+from app.core.time import aware
 from app.models import Creative, Website
-from app.models.entities import aware
 from app.services.creatives.renderer import SIZES, TEMPLATES, CreativeSpec, hex_to_rgb, render
 
 log = logging.getLogger(__name__)
 
-DEFAULT_BRAND: Dict[str, Any] = {"primary": "#4F46E5", "secondary": "#0EA5E9", "text": "#FFFFFF", "logo_path": "", "style": "clean, modern, friendly"}
+DEFAULT_BRAND: dict[str, Any] = {"primary": "#4F46E5", "secondary": "#0EA5E9", "text": "#FFFFFF", "logo_path": "", "style": "clean, modern, friendly"}
 
 
 def media_root() -> Path:
@@ -33,14 +33,14 @@ def public_media_url(rel_path: str) -> str:
     return f"{settings.public_base_url.rstrip('/')}/media/{rel_path.lstrip('/')}"
 
 
-def brand_for(website: Website) -> Dict[str, Any]:
+def brand_for(website: Website) -> dict[str, Any]:
     brand = {**DEFAULT_BRAND, **(website.brand or {})}
     brand["name"] = website.name or website.domain
     brand["handle"] = website.domain.removeprefix("www.")
     return brand
 
 
-def spec_from_payload(website: Website, payload: Dict[str, Any]) -> CreativeSpec:
+def spec_from_payload(website: Website, payload: dict[str, Any]) -> CreativeSpec:
     brand = brand_for(website)
     return CreativeSpec(
         headline=str(payload.get("headline") or "").strip()[:220],
@@ -48,8 +48,8 @@ def spec_from_payload(website: Website, payload: Dict[str, Any]) -> CreativeSpec
         brand_name=str(payload.get("brand_name") or brand["name"]),
         handle=str(payload.get("handle") if payload.get("handle") is not None else brand["handle"]),
         cta=str(payload.get("cta") or "").strip()[:40],
-        template=payload.get("template") if payload.get("template") in TEMPLATES else "bold",
-        size=payload.get("size") if payload.get("size") in SIZES else "square",
+        template=str(payload.get("template")) if payload.get("template") in TEMPLATES else "bold",
+        size=str(payload.get("size")) if payload.get("size") in SIZES else "square",
         primary=str(payload.get("primary") or brand["primary"]),
         secondary=str(payload.get("secondary") or brand["secondary"]),
         text=str(payload.get("text") or brand["text"]),
@@ -64,7 +64,7 @@ def _new_rel_path(website_id: int, ext: str = "png") -> str:
     return rel.as_posix()
 
 
-def render_template_creative(website: Website, payload: Dict[str, Any]) -> Creative:
+def render_template_creative(website: Website, payload: dict[str, Any]) -> Creative:
     spec = spec_from_payload(website, payload)
     if not spec.headline:
         raise ValueError("headline is required")
@@ -78,7 +78,7 @@ def render_template_creative(website: Website, payload: Dict[str, Any]) -> Creat
     )
 
 
-def preview_png(website: Website, payload: Dict[str, Any]) -> bytes:
+def preview_png(website: Website, payload: dict[str, Any]) -> bytes:
     """Fast preview (downscaled) without persisting."""
     import io
 
@@ -163,21 +163,21 @@ async def generate_ai_creative(website: Website, prompt: str, size: str = "squar
 HEX_RE = re.compile(r"#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b")
 
 
-def guess_brand_colours(html: str) -> Dict[str, str]:
+def guess_brand_colours(html: str) -> dict[str, str]:
     """Pick the most frequent saturated colours from inline CSS / theme-color meta."""
-    from collections import Counter
     import colorsys
+    from collections import Counter
 
     m = re.search(r'name=["\']theme-color["\'][^>]*content=["\'](#[0-9a-fA-F]{3,6})', html or "", re.I)
     counts: Counter = Counter()
     for hx in HEX_RE.findall(html or ""):
         rgb = hex_to_rgb(hx)
-        h, l, s = colorsys.rgb_to_hls(*[c / 255 for c in rgb])
+        _h, l, s = colorsys.rgb_to_hls(*[c / 255 for c in rgb])
         if s < 0.35 or l < 0.15 or l > 0.85:  # skip greys / near black / near white
             continue
-        counts[("#%02X%02X%02X" % rgb)] += 1
+        counts["#{:02X}{:02X}{:02X}".format(*rgb)] += 1
     ranked = [c for c, _ in counts.most_common(6)]
-    out: Dict[str, str] = {}
+    out: dict[str, str] = {}
     if m:
         out["primary"] = m.group(1).upper()
     elif ranked:
@@ -189,12 +189,12 @@ def guess_brand_colours(html: str) -> Dict[str, str]:
     return out
 
 
-def creative_to_dict(c: Creative) -> Dict[str, Any]:
+def creative_to_dict(c: Creative) -> dict[str, Any]:
     return {
         "id": c.id, "kind": c.kind, "template": c.template, "size": c.size, "width": c.width, "height": c.height,
         "url": f"/media/{c.path}", "public_url": public_media_url(c.path), "spec": c.spec or {}, "created_at": aware(c.created_at),
     }
 
 
-def template_catalog() -> List[Dict[str, Any]]:
+def template_catalog() -> list[dict[str, Any]]:
     return [{"id": k, **v} for k, v in TEMPLATES.items()]

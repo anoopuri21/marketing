@@ -3,8 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -32,7 +31,7 @@ async def run_audit(audit_id: int) -> None:
         if website is None:
             return
         audit.status = "running"
-        audit.started_at = datetime.now(timezone.utc)
+        audit.started_at = datetime.now(UTC)
         await db.commit()
         site_url = website.url
         website_ctx = {
@@ -59,14 +58,20 @@ async def run_audit(audit_id: int) -> None:
             if audit:
                 audit.status = "failed"
                 audit.error = f"{type(exc).__name__}: {exc}"[:1000]
-                audit.finished_at = datetime.now(timezone.utc)
+                audit.finished_at = datetime.now(UTC)
         return
 
     async with session_scope() as db:
         audit = await db.get(Audit, audit_id)
+        if audit is None:  # deleted while crawling
+            log.warning("audit %s vanished before completion", audit_id)
+            return
         website = await db.get(Website, audit.website_id)
+        if website is None:
+            log.warning("website for audit %s vanished before completion", audit_id)
+            return
         audit.status = "completed"
-        audit.finished_at = datetime.now(timezone.utc)
+        audit.finished_at = datetime.now(UTC)
         audit.pages_crawled = len(site.pages)
         audit.overall_score = result.overall
         audit.seo_score = result.scores.get("seo")
@@ -128,11 +133,11 @@ async def _sync_tasks(db, website_id: int, issues) -> None:
     for key, t in by_key.items():
         if key not in current_keys and t.status in ("todo", "in_progress"):
             t.status = "done"
-            t.completed_at = datetime.now(timezone.utc)
+            t.completed_at = datetime.now(UTC)
             t.description = (t.description + "\n\n[Auto-resolved: issue no longer detected in latest audit]").strip()
 
 
-async def create_and_run_audit(website_id: int, trigger: str = "manual") -> Optional[int]:
+async def create_and_run_audit(website_id: int, trigger: str = "manual") -> int | None:
     async with session_scope() as db:
         audit = Audit(website_id=website_id, status="queued", trigger=trigger)
         db.add(audit)

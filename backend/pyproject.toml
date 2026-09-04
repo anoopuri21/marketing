@@ -1,0 +1,49 @@
+[tool.ruff]
+line-length = 160
+target-version = "py311"
+extend-exclude = [".venv", "data"]
+
+[tool.ruff.lint]
+# Correctness + modern-Python + bug-bear + simplification + async pitfalls.
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "ASYNC", "PL"]
+ignore = [
+  "E501",    # line length handled by formatter/`line-length`
+  "E741",    # ambiguous variable names (l, I, O) – we use short names in comprehensions deliberately
+  "RUF001", "RUF002", "RUF003",  # typographic dashes/quotes in user-facing copy are intentional
+  "RUF012",  # mutable class attributes in SQLAlchemy models / pydantic settings are fine
+  "B008",    # FastAPI's `Depends()` / `File()` in defaults is idiomatic
+  "PLR0913", "PLR0912", "PLR0915", "PLR0911", "PLR2004", "PLW2901", "PLR1714", "PLC0415",  # complexity + magic numbers: too noisy for analyzers
+  "SIM102", "SIM108",  # nested ifs / ternaries – readability first
+  "PLR0917",  # positional-argument count: internal helpers with explicit names are clearer than kwargs-only
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B", "PL", "ASYNC", "RUF059"]
+"app/models/__init__.py" = ["F401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = false
+no_implicit_optional = true
+check_untyped_defs = true
+plugins = ["pydantic.mypy"]
+exclude = ["\\.venv", "data"]
+
+[[tool.mypy.overrides]]
+# BeautifulSoup's attribute types are `str | AttributeValueList`; the crawler normalises them at runtime.
+module = "app.services.audit.crawler"
+disable_error_code = ["union-attr", "arg-type", "assignment", "call-overload", "misc"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = [
+  "ignore::DeprecationWarning:passlib.*",
+  # starlette ≥0.5x nags about httpx-1 based TestClient; httpx2 is not on PyPI for our pinned FastAPI yet
+  "ignore:Using `httpx` with `starlette.testclient` is deprecated:UserWarning",
+  "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+]

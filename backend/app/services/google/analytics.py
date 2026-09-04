@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta, timezone
-from typing import Any, Dict, List
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 import httpx
 
@@ -22,13 +22,13 @@ class GA4Client:
         pid = str(property_id).strip()
         self.property = pid if pid.startswith("properties/") else f"properties/{pid}"
 
-    async def _headers(self) -> Dict[str, str]:
+    async def _headers(self) -> dict[str, str]:
         token = await get_access_token(self.sa, [SCOPES["ga4"]])
         return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-    async def run_report(self, start: date, end: date, dimensions: List[str], metrics: List[str], limit: int = 100,
-                         order_by_metric: str | None = None) -> List[Dict[str, Any]]:
-        body: Dict[str, Any] = {
+    async def run_report(self, start: date, end: date, dimensions: list[str], metrics: list[str], limit: int = 100,
+                         order_by_metric: str | None = None) -> list[dict[str, Any]]:
+        body: dict[str, Any] = {
             "dateRanges": [{"startDate": start.isoformat(), "endDate": end.isoformat()}],
             "dimensions": [{"name": d} for d in dimensions],
             "metrics": [{"name": m} for m in metrics],
@@ -52,21 +52,21 @@ class GA4Client:
         met_names = [m["name"] for m in data.get("metricHeaders", [])]
         rows = []
         for row in data.get("rows", []) or []:
-            item: Dict[str, Any] = {}
-            for name, v in zip(dim_names, row.get("dimensionValues", [])):
+            item: dict[str, Any] = {}
+            for name, v in zip(dim_names, row.get("dimensionValues", []), strict=False):
                 item[name] = v.get("value")
-            for name, v in zip(met_names, row.get("metricValues", [])):
+            for name, v in zip(met_names, row.get("metricValues", []), strict=False):
                 raw = v.get("value", "0")
                 item[name] = float(raw) if "." in raw else int(raw)
             rows.append(item)
         return rows
 
 
-def _sum(rows: List[Dict[str, Any]], metric: str) -> float:
+def _sum(rows: list[dict[str, Any]], metric: str) -> float:
     return sum(float(r.get(metric, 0) or 0) for r in rows)
 
 
-async def sync_ga4(db, website: Website, integration: Integration, days: int = 28) -> Dict[str, Any]:
+async def sync_ga4(db, website: Website, integration: Integration, days: int = 28) -> dict[str, Any]:
     cfg = integration.config or {}
     client = GA4Client(cfg.get("service_account_json", ""), cfg.get("property_id", ""))
     end = date.today() - timedelta(days=1)
@@ -95,8 +95,8 @@ async def sync_ga4(db, website: Website, integration: Integration, days: int = 2
     totals["organic_share"] = round(totals["organic_sessions"] / sessions * 100, 1) if sessions else 0.0
 
     integration.status = "connected"
-    integration.connected_at = integration.connected_at or datetime.now(timezone.utc)
-    integration.last_synced_at = datetime.now(timezone.utc)
+    integration.connected_at = integration.connected_at or datetime.now(UTC)
+    integration.last_synced_at = datetime.now(UTC)
     integration.last_error = ""
     integration.summary = {
         "property": client.property, "period": {"start": start.isoformat(), "end": end.isoformat(), "days": days},

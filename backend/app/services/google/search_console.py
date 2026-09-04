@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 API = "https://searchconsole.googleapis.com/webmasters/v3"
 
 
-def candidate_property_urls(website_url: str) -> List[str]:
+def candidate_property_urls(website_url: str) -> list[str]:
     """Search Console properties can be URL-prefix or Domain properties; try the usual forms."""
     parsed = urlparse(website_url)
     host = parsed.netloc.lower()
@@ -37,11 +37,11 @@ class SearchConsoleClient:
     def __init__(self, service_account_json: str | dict):
         self.sa = parse_service_account(service_account_json)
 
-    async def _headers(self) -> Dict[str, str]:
+    async def _headers(self) -> dict[str, str]:
         token = await get_access_token(self.sa, [SCOPES["gsc"]])
         return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-    async def list_sites(self) -> List[Dict[str, Any]]:
+    async def list_sites(self) -> list[dict[str, Any]]:
         try:
             async with httpx.AsyncClient(timeout=30, verify=ssl_context()) as client:
                 resp = await client.get(f"{API}/sites", headers=await self._headers())
@@ -51,7 +51,7 @@ class SearchConsoleClient:
             raise GoogleAuthError(f"Search Console sites.list failed ({resp.status_code}): {resp.text[:200]}")
         return resp.json().get("siteEntry", []) or []
 
-    async def resolve_property(self, website_url: str, preferred: str = "") -> Optional[str]:
+    async def resolve_property(self, website_url: str, preferred: str = "") -> str | None:
         sites = {s["siteUrl"]: s.get("permissionLevel", "") for s in await self.list_sites()}
         if preferred and preferred in sites:
             return preferred
@@ -60,9 +60,9 @@ class SearchConsoleClient:
                 return cand
         return None
 
-    async def query(self, site_url: str, start: date, end: date, dimensions: List[str], row_limit: int = 1000,
-                    filters: Optional[List[Dict[str, str]]] = None) -> List[Dict[str, Any]]:
-        body: Dict[str, Any] = {
+    async def query(self, site_url: str, start: date, end: date, dimensions: list[str], row_limit: int = 1000,
+                    filters: list[dict[str, str]] | None = None) -> list[dict[str, Any]]:
+        body: dict[str, Any] = {
             "startDate": start.isoformat(), "endDate": end.isoformat(), "dimensions": dimensions,
             "rowLimit": row_limit, "dataState": "final",
         }
@@ -84,7 +84,7 @@ class SearchConsoleClient:
 # --------------------------------------------------------------------------- #
 # Sync
 # --------------------------------------------------------------------------- #
-async def sync_search_console(db, website: Website, integration: Integration, days: int = 28) -> Dict[str, Any]:
+async def sync_search_console(db, website: Website, integration: Integration, days: int = 28) -> dict[str, Any]:
     """Pull query + page stats for the last N days (GSC data lags ~2 days)."""
     cfg = integration.config or {}
     client = SearchConsoleClient(cfg.get("service_account_json", ""))
@@ -134,22 +134,22 @@ async def sync_search_console(db, website: Website, integration: Integration, da
 
     # Feed tracked keywords with real Google positions (provider = search_console)
     keywords = (await db.execute(select(Keyword).where(Keyword.website_id == website.id))).scalars().all()
-    by_term = {r["keys"][0].lower(): r for r in queries}
+    by_term: dict[str, dict[str, Any]] = {r["keys"][0].lower(): r for r in queries}
     matched = 0
     for kw in keywords:
-        r = by_term.get(kw.term.lower())
-        if not r:
+        row = by_term.get(kw.term.lower())
+        if row is None:
             continue
         matched += 1
         db.add(KeywordRank(
-            keyword_id=kw.id, checked_at=datetime.now(timezone.utc), position=int(round(r.get("position", 0))) or None,
+            keyword_id=kw.id, checked_at=datetime.now(UTC), position=round(row.get("position", 0)) or None,
             url="", engine="google", provider="search_console",
-            features={"clicks": r.get("clicks", 0), "impressions": r.get("impressions", 0), "ctr": round(r.get("ctr", 0) * 100, 2), "period_days": days},
+            features={"clicks": row.get("clicks", 0), "impressions": row.get("impressions", 0), "ctr": round(row.get("ctr", 0) * 100, 2), "period_days": days},
         ))
 
     integration.status = "connected"
-    integration.connected_at = integration.connected_at or datetime.now(timezone.utc)
-    integration.last_synced_at = datetime.now(timezone.utc)
+    integration.connected_at = integration.connected_at or datetime.now(UTC)
+    integration.last_synced_at = datetime.now(UTC)
     integration.last_error = ""
     integration.summary = {
         "property": prop, "period": {"start": start.isoformat(), "end": end.isoformat(), "days": days},

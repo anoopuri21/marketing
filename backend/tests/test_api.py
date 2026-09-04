@@ -1,6 +1,5 @@
 """End-to-end API tests. The crawler is monkeypatched so no network is needed."""
-import asyncio
-from typing import Iterator
+from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient

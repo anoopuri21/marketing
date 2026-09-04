@@ -9,7 +9,6 @@ from __future__ import annotations
 import os
 import ssl
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
@@ -27,7 +26,7 @@ _SYSTEM_CA_CANDIDATES = (
 _ctx_cache: dict[str, ssl.SSLContext] = {}
 
 
-def _ca_file() -> Optional[str]:
+def _ca_file() -> str | None:
     for candidate in _SYSTEM_CA_CANDIDATES:
         if candidate and Path(candidate).is_file():
             return candidate
@@ -55,7 +54,7 @@ def ssl_context(insecure: bool = False) -> ssl.SSLContext | bool:
     return ctx
 
 
-def make_client(insecure: bool = False, timeout: Optional[float] = None, **kwargs) -> httpx.AsyncClient:
+def make_client(insecure: bool = False, timeout: float | None = None, **kwargs) -> httpx.AsyncClient:
     headers = {"User-Agent": settings.user_agent, "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
                "Accept-Language": "en-US,en;q=0.9"}
     headers.update(kwargs.pop("headers", {}) or {})

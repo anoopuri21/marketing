@@ -6,14 +6,14 @@ prospect's real gaps (from the mini audit) and the sender's own strengths.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 from app.services.ai.provider import ai_client
 
 log = logging.getLogger(__name__)
 
 
-def _sender(website: Dict[str, Any]) -> Dict[str, str]:
+def _sender(website: dict[str, Any]) -> dict[str, str]:
     return {
         "name": website.get("name") or website.get("domain") or "our team",
         "url": website.get("url") or "",
@@ -23,8 +23,8 @@ def _sender(website: Dict[str, Any]) -> Dict[str, str]:
     }
 
 
-def _angle(lead: Dict[str, Any]) -> Dict[str, str]:
-    gaps: List[Dict[str, Any]] = (lead.get("audit") or {}).get("gaps") or []
+def _angle(lead: dict[str, Any]) -> dict[str, Any]:
+    gaps: list[dict[str, Any]] = (lead.get("audit") or {}).get("gaps") or []
     company = lead.get("company") or "your business"
     if not lead.get("website_url"):
         return {"headline": f"{company} has no website Google can find",
@@ -50,7 +50,7 @@ def _angle(lead: Dict[str, Any]) -> Dict[str, str]:
     }
 
 
-def rule_based_pitch(website: Dict[str, Any], lead: Dict[str, Any]) -> Dict[str, Any]:
+def rule_based_pitch(website: dict[str, Any], lead: dict[str, Any]) -> dict[str, Any]:
     s = _sender(website)
     a = _angle(lead)
     company = lead.get("company") or "there"
@@ -81,7 +81,7 @@ Best,
             "email": {"subject": email_subject, "body": email_body}, "whatsapp": whatsapp, "follow_ups": follow_ups}
 
 
-async def write_pitch(website: Dict[str, Any], lead: Dict[str, Any], tone: str = "friendly") -> Dict[str, Any]:
+async def write_pitch(website: dict[str, Any], lead: dict[str, Any], tone: str = "friendly") -> dict[str, Any]:
     if ai_client.available:
         s = _sender(website)
         a = _angle(lead)

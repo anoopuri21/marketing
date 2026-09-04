@@ -1,12 +1,13 @@
 """Email delivery with pluggable backends: smtp | file (outbox) | console."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.message import EmailMessage
 from pathlib import Path
-from typing import List
+from typing import Any
 
 import aiosmtplib
 
@@ -23,7 +24,18 @@ def _html_to_text(html: str) -> str:
     return text.strip()
 
 
-async def send_email(recipients: List[str], subject: str, html: str) -> str:
+def _write_outbox(raw: bytes, html: str, subject: str) -> Path:
+    out_dir = Path(settings.outbox_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
+    safe_subject = re.sub(r"[^a-zA-Z0-9]+", "-", subject)[:60].strip("-")
+    path = out_dir / f"{stamp}-{safe_subject}.eml"
+    path.write_bytes(raw)
+    (out_dir / f"{stamp}-{safe_subject}.html").write_text(html, encoding="utf-8")
+    return path
+
+
+async def send_email(recipients: list[str], subject: str, html: str) -> str:
     """Send an email. Returns a human-readable delivery info string."""
     backend = settings.resolved_email_backend
     msg = EmailMessage()
@@ -34,7 +46,7 @@ async def send_email(recipients: List[str], subject: str, html: str) -> str:
     msg.add_alternative(html, subtype="html")
 
     if backend == "smtp":
-        kwargs = dict(hostname=settings.smtp_host, port=settings.smtp_port, timeout=30)
+        kwargs: dict[str, Any] = {"hostname": settings.smtp_host, "port": settings.smtp_port, "timeout": 30}
         if settings.smtp_use_ssl:
             kwargs["use_tls"] = True
         elif settings.smtp_use_tls:
@@ -49,12 +61,6 @@ async def send_email(recipients: List[str], subject: str, html: str) -> str:
         log.info("=== EMAIL to %s: %s ===\n%s", recipients, subject, _html_to_text(html)[:2000])
         return "Printed to server console (EMAIL_BACKEND=console)"
 
-    # file outbox (default in dev)
-    out_dir = Path(settings.outbox_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
-    safe_subject = re.sub(r"[^a-zA-Z0-9]+", "-", subject)[:60].strip("-")
-    path = out_dir / f"{stamp}-{safe_subject}.eml"
-    path.write_bytes(bytes(msg))
-    (out_dir / f"{stamp}-{safe_subject}.html").write_text(html, encoding="utf-8")
+    # file outbox (default in dev) – file IO off the event loop
+    path = await asyncio.to_thread(_write_outbox, bytes(msg), html, subject)
     return f"Saved to outbox: {path.name} (configure SMTP_HOST to send real emails)"

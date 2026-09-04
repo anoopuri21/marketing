@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from app.core.config import settings
 from app.services.audit.analyzers import analyze
@@ -15,7 +15,7 @@ from app.services.audit.crawler import crawl_site
 log = logging.getLogger(__name__)
 
 # Gap catalogue: (code -> label, what we can sell against it, weight for the opportunity score)
-GAP_CATALOGUE: Dict[str, Dict[str, Any]] = {
+GAP_CATALOGUE: dict[str, dict[str, Any]] = {
     "NO_WEBSITE": {"label": "No website found", "pitch": "a professional website that shows up on Google", "weight": 30},
     "HOME_UNREACHABLE": {"label": "Website is down or unreachable", "pitch": "getting the site back online and stable", "weight": 30},
     "NO_HTTPS": {"label": "No HTTPS (browsers warn visitors)", "pitch": "securing the site with HTTPS", "weight": 12},
@@ -54,14 +54,14 @@ ISSUE_TO_GAP = {
 }
 
 
-def _gap(code: str, detail: str = "") -> Dict[str, Any]:
+def _gap(code: str, detail: str = "") -> dict[str, Any]:
     meta = GAP_CATALOGUE[code]
     return {"code": code, "label": meta["label"], "pitch": meta["pitch"], "weight": meta["weight"], "detail": detail[:200]}
 
 
-def gaps_from_analysis(facts: Dict[str, Any], issues: List[Dict[str, Any]], scores: Dict[str, float]) -> List[Dict[str, Any]]:
+def gaps_from_analysis(facts: dict[str, Any], issues: list[dict[str, Any]], scores: dict[str, float]) -> list[dict[str, Any]]:
     """Map audit output onto the gap catalogue. Uses facts for the important binary signals so we don't depend on exact issue codes."""
-    gaps: Dict[str, Dict[str, Any]] = {}
+    gaps: dict[str, dict[str, Any]] = {}
     if facts.get("tls_invalid"):
         gaps["TLS_INVALID"] = _gap("TLS_INVALID", facts.get("tls_error", ""))
     elif facts.get("https") is False:
@@ -94,7 +94,7 @@ def gaps_from_analysis(facts: Dict[str, Any], issues: List[Dict[str, Any]], scor
     return ordered[:12]
 
 
-def opportunity_score(gaps: List[Dict[str, Any]], website_score: Optional[float], listing: Dict[str, Any]) -> int:
+def opportunity_score(gaps: list[dict[str, Any]], website_score: float | None, listing: dict[str, Any]) -> int:
     """0-100: how much a prospect needs help *and* is reachable. Higher = better lead."""
     score = 0.0
     if website_score is None:  # no site at all
@@ -117,7 +117,7 @@ def opportunity_score(gaps: List[Dict[str, Any]], website_score: Optional[float]
     return int(max(0, min(100, round(score))))
 
 
-def demo_audit(url: str) -> Dict[str, Any]:
+def demo_audit(url: str) -> dict[str, Any]:
     """Deterministic pseudo-audit for demo prospects (example.com domains are never crawled)."""
     import hashlib
     import random
@@ -147,7 +147,7 @@ def is_demo_url(url: str) -> bool:
     return h.endswith(("example.com", "example.net", "example.org")) or h in ("example.com", "example.net", "example.org")
 
 
-async def qualify_website(url: str, max_pages: Optional[int] = None) -> Dict[str, Any]:
+async def qualify_website(url: str, max_pages: int | None = None) -> dict[str, Any]:
     """Crawl a few pages of the prospect's site and return {website_score, scores, gaps, facts, pages_crawled}."""
     if is_demo_url(url):
         return demo_audit(url)

@@ -14,7 +14,7 @@ import hashlib
 import logging
 import random
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -24,7 +24,7 @@ from app.core.http import ssl_context
 
 log = logging.getLogger(__name__)
 
-Prospect = Dict[str, Any]
+Prospect = dict[str, Any]
 
 # Domains that are never a "business we could pitch to".
 EXCLUDED_HOSTS = (
@@ -56,7 +56,7 @@ def _clean_phone(p: str) -> str:
 # --------------------------------------------------------------------------- #
 # SerpAPI
 # --------------------------------------------------------------------------- #
-async def _serpapi(params: Dict[str, Any]) -> Dict[str, Any]:
+async def _serpapi(params: dict[str, Any]) -> dict[str, Any]:
     params = {**params, "api_key": settings.serpapi_key}
     async with httpx.AsyncClient(timeout=40, verify=ssl_context()) as client:
         resp = await client.get("https://serpapi.com/search.json", params=params)
@@ -64,9 +64,9 @@ async def _serpapi(params: Dict[str, Any]) -> Dict[str, Any]:
         return resp.json()
 
 
-async def serpapi_maps(query: str, location: str, limit: int = 20, language: str = "en") -> List[Prospect]:
+async def serpapi_maps(query: str, location: str, limit: int = 20, language: str = "en") -> list[Prospect]:
     """Local businesses from Google Maps for "<query> in <location>"."""
-    out: List[Prospect] = []
+    out: list[Prospect] = []
     start = 0
     while len(out) < limit and start < 60:
         data = await _serpapi({"engine": "google_maps", "type": "search", "q": f"{query} in {location}".strip(), "hl": language, "start": start})
@@ -92,13 +92,13 @@ async def serpapi_maps(query: str, location: str, limit: int = 20, language: str
     return out
 
 
-async def serpapi_organic(query: str, location: str, limit: int = 20, language: str = "en") -> List[Prospect]:
+async def serpapi_organic(query: str, location: str, limit: int = 20, language: str = "en") -> list[Prospect]:
     """Companies ranking organically for a service query – useful for B2B prospecting (agencies, SaaS…)."""
-    params: Dict[str, Any] = {"engine": "google", "q": f"{query} {location}".strip(), "num": min(max(limit * 2, 10), 100), "hl": language}
+    params: dict[str, Any] = {"engine": "google", "q": f"{query} {location}".strip(), "num": min(max(limit * 2, 10), 100), "hl": language}
     if location:
         params["location"] = location
     data = await _serpapi(params)
-    out: List[Prospect] = []
+    out: list[Prospect] = []
     seen: set = set()
     for r in data.get("organic_results") or []:
         link = r.get("link") or ""
@@ -132,13 +132,13 @@ _DEMO_SUFFIX = ["Studio", "Solutions", "Services", "Center", "Clinic", "Group", 
 _DEMO_TLDS = ["example.com", "example.net", "example.org"]
 
 
-def demo_prospects(query: str, location: str, limit: int = 12) -> List[Prospect]:
+def demo_prospects(query: str, location: str, limit: int = 12) -> list[Prospect]:
     """Deterministic sample prospects (RFC 2606 example domains) – clearly labelled `source=demo`."""
     seed = hashlib.sha1(f"{query}|{location}".lower().encode()).hexdigest()
     rng = random.Random(seed)
     names = rng.sample(_DEMO_NAMES, k=min(limit, len(_DEMO_NAMES)))
     cat = query.strip().title() or "Business"
-    out: List[Prospect] = []
+    out: list[Prospect] = []
     for i, n in enumerate(names):
         suffix = rng.choice(_DEMO_SUFFIX)
         company = f"{n} {cat} {suffix}" if len(cat.split()) <= 2 else f"{n} {suffix}"
@@ -162,7 +162,7 @@ def demo_prospects(query: str, location: str, limit: int = 12) -> List[Prospect]
 # --------------------------------------------------------------------------- #
 # Facade
 # --------------------------------------------------------------------------- #
-async def discover(query: str, location: str, mode: str = "maps", limit: int = 20, language: str = "en") -> Dict[str, Any]:
+async def discover(query: str, location: str, mode: str = "maps", limit: int = 20, language: str = "en") -> dict[str, Any]:
     """Return {"provider": str, "prospects": [...], "note": str}."""
     provider = settings.resolved_lead_provider
     if provider == "none":

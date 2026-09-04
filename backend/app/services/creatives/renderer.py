@@ -12,17 +12,16 @@ import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-SIZES: Dict[str, Tuple[int, int]] = {
+SIZES: dict[str, tuple[int, int]] = {
     "square": (1080, 1080),     # Instagram / Facebook / LinkedIn feed
     "landscape": (1200, 628),   # link posts, X, LinkedIn articles
     "story": (1080, 1920),      # Instagram / Facebook stories, reels cover
 }
 
-TEMPLATES: Dict[str, Dict[str, str]] = {
+TEMPLATES: dict[str, dict[str, str]] = {
     "bold": {"label": "Bold statement", "description": "Big headline on a solid brand colour – announcements & offers."},
     "gradient": {"label": "Gradient card", "description": "Soft diagonal gradient with headline and subline – tips & quotes."},
     "split": {"label": "Split panel", "description": "Coloured side panel + white content area – educational carousels."},
@@ -47,14 +46,14 @@ class CreativeSpec:
     primary: str = "#4F46E5"
     secondary: str = "#0EA5E9"
     text: str = "#FFFFFF"
-    logo_path: Optional[str] = None
-    accent_words: List[str] = field(default_factory=list)  # words in the headline to colour with the secondary colour
+    logo_path: str | None = None
+    accent_words: list[str] = field(default_factory=list)  # words in the headline to colour with the secondary colour
 
 
 # --------------------------------------------------------------------------- #
 # helpers
 # --------------------------------------------------------------------------- #
-def hex_to_rgb(value: str, fallback=(79, 70, 229)) -> Tuple[int, int, int]:
+def hex_to_rgb(value: str, fallback=(79, 70, 229)) -> tuple[int, int, int]:
     value = (value or "").strip().lstrip("#")
     if len(value) == 3:
         value = "".join(c * 2 for c in value)
@@ -63,16 +62,16 @@ def hex_to_rgb(value: str, fallback=(79, 70, 229)) -> Tuple[int, int, int]:
     return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
 
 
-def luminance(rgb: Tuple[int, int, int]) -> float:
+def luminance(rgb: tuple[int, int, int]) -> float:
     r, g, b = [c / 255 for c in rgb]
     return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
 
-def readable_text(bg: Tuple[int, int, int]) -> Tuple[int, int, int]:
+def readable_text(bg: tuple[int, int, int]) -> tuple[int, int, int]:
     return (17, 24, 39) if luminance(bg) > 0.6 else (255, 255, 255)
 
 
-def shade(rgb: Tuple[int, int, int], factor: float) -> Tuple[int, int, int]:
+def shade(rgb: tuple[int, int, int], factor: float) -> tuple[int, int, int]:
     """factor < 1 darkens, > 1 lightens (in HLS space)."""
     h, l, s = colorsys.rgb_to_hls(*[c / 255 for c in rgb])
     l = max(0.0, min(1.0, l * factor))
@@ -80,7 +79,7 @@ def shade(rgb: Tuple[int, int, int], factor: float) -> Tuple[int, int, int]:
     return int(r * 255), int(g * 255), int(b * 255)
 
 
-def _find_font(bold: bool) -> Optional[Path]:
+def _find_font(bold: bool) -> Path | None:
     names = ["DejaVuSans-Bold.ttf", "Arial Bold.ttf", "arialbd.ttf", "Helvetica.ttc"] if bold else ["DejaVuSans.ttf", "Arial.ttf", "arial.ttf", "Helvetica.ttc"]
     for d in FONT_DIRS:
         for n in names:
@@ -89,7 +88,7 @@ def _find_font(bold: bool) -> Optional[Path]:
     return None
 
 
-_font_cache: Dict[Tuple[bool, int], ImageFont.FreeTypeFont | ImageFont.ImageFont] = {}
+_font_cache: dict[tuple[bool, int], ImageFont.FreeTypeFont | ImageFont.ImageFont] = {}
 
 
 def font(size: int, bold: bool = False):
@@ -100,8 +99,8 @@ def font(size: int, bold: bool = False):
     return _font_cache[key]
 
 
-def wrap(draw: ImageDraw.ImageDraw, text: str, fnt, max_width: int) -> List[str]:
-    lines: List[str] = []
+def wrap(draw: ImageDraw.ImageDraw, text: str, fnt, max_width: int) -> list[str]:
+    lines: list[str] = []
     for para in text.split("\n"):
         words = para.split()
         cur = ""
@@ -131,8 +130,8 @@ def fit_text(draw: ImageDraw.ImageDraw, text: str, max_width: int, max_height: i
     return fnt, wrap(draw, text, fnt, max_width), int(min_size * spacing)
 
 
-def draw_lines(draw: ImageDraw.ImageDraw, lines: List[str], x: int, y: int, fnt, line_h: int, fill, align: str = "left", box_w: int = 0,
-               accent_words: Optional[List[str]] = None, accent_fill=None) -> int:
+def draw_lines(draw: ImageDraw.ImageDraw, lines: list[str], x: int, y: int, fnt, line_h: int, fill, align: str = "left", box_w: int = 0,
+               accent_words: list[str] | None = None, accent_fill=None) -> int:
     accents = {w.lower().strip("#,.!?") for w in (accent_words or [])}
     for line in lines:
         w = draw.textlength(line, font=fnt)
@@ -149,7 +148,7 @@ def draw_lines(draw: ImageDraw.ImageDraw, lines: List[str], x: int, y: int, fnt,
     return y
 
 
-def gradient(size: Tuple[int, int], c1: Tuple[int, int, int], c2: Tuple[int, int, int], angle_deg: float = 35.0) -> Image.Image:
+def gradient(size: tuple[int, int], c1: tuple[int, int, int], c2: tuple[int, int, int], angle_deg: float = 35.0) -> Image.Image:
     """Diagonal two-colour gradient. Rendered small and upscaled – fast and smooth."""
     w, h = size
     small = (96, max(1, int(96 * h / w)))
@@ -158,11 +157,11 @@ def gradient(size: Tuple[int, int], c1: Tuple[int, int, int], c2: Tuple[int, int
     maxd = abs(small[0] * dx) + abs(small[1] * dy) or 1
     mask = Image.new("L", small)
     mask.putdata([int(max(0, min(255, ((xx * dx + yy * dy) / maxd) * 255))) for yy in range(small[1]) for xx in range(small[0])])
-    mask = mask.resize(size, Image.BILINEAR)
+    mask = mask.resize(size, Image.Resampling.BILINEAR)
     return Image.composite(Image.new("RGB", size, c2), Image.new("RGB", size, c1), mask)
 
 
-def soft_circles(img: Image.Image, colour: Tuple[int, int, int], seed: str) -> None:
+def soft_circles(img: Image.Image, colour: tuple[int, int, int], seed: str) -> None:
     """Decorative translucent blobs, deterministic per seed."""
     w, h = img.size
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
@@ -172,12 +171,12 @@ def soft_circles(img: Image.Image, colour: Tuple[int, int, int], seed: str) -> N
         r = int(w * (0.25 + digest[i] / 255 * 0.25))
         cx = int(digest[i + 3] / 255 * w)
         cy = int(digest[i + 6] / 255 * h)
-        od.ellipse((cx - r, cy - r, cx + r, cy + r), fill=colour + (38,))
+        od.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(*colour, 38))
     blurred = overlay.filter(ImageFilter.GaussianBlur(radius=w // 18))
     img.paste(Image.alpha_composite(img.convert("RGBA"), blurred).convert("RGB"))
 
 
-def paste_logo(img: Image.Image, logo_path: Optional[str], box: Tuple[int, int, int, int]) -> bool:
+def paste_logo(img: Image.Image, logo_path: str | None, box: tuple[int, int, int, int]) -> bool:
     if not logo_path or not Path(logo_path).exists():
         return False
     try:
@@ -223,7 +222,7 @@ def render(spec: CreativeSpec) -> Image.Image:
     return fn(spec, size)
 
 
-def _bold(spec: CreativeSpec, size: Tuple[int, int]) -> Image.Image:
+def _bold(spec: CreativeSpec, size: tuple[int, int]) -> Image.Image:
     w, h = size
     primary = hex_to_rgb(spec.primary)
     secondary = hex_to_rgb(spec.secondary, (14, 165, 233))
@@ -250,7 +249,7 @@ def _bold(spec: CreativeSpec, size: Tuple[int, int]) -> Image.Image:
     return img
 
 
-def _gradient(spec: CreativeSpec, size: Tuple[int, int]) -> Image.Image:
+def _gradient(spec: CreativeSpec, size: tuple[int, int]) -> Image.Image:
     w, h = size
     c1, c2 = hex_to_rgb(spec.primary), hex_to_rgb(spec.secondary, (14, 165, 233))
     img = gradient(size, c1, c2)
@@ -278,7 +277,7 @@ def _gradient(spec: CreativeSpec, size: Tuple[int, int]) -> Image.Image:
     return img
 
 
-def _split(spec: CreativeSpec, size: Tuple[int, int]) -> Image.Image:
+def _split(spec: CreativeSpec, size: tuple[int, int]) -> Image.Image:
     w, h = size
     primary = hex_to_rgb(spec.primary)
     img = Image.new("RGB", size, (255, 255, 255))
@@ -318,7 +317,7 @@ def _split(spec: CreativeSpec, size: Tuple[int, int]) -> Image.Image:
     return img
 
 
-def _quote(spec: CreativeSpec, size: Tuple[int, int]) -> Image.Image:
+def _quote(spec: CreativeSpec, size: tuple[int, int]) -> Image.Image:
     w, h = size
     primary = hex_to_rgb(spec.primary)
     bg = shade(primary, 0.55)
@@ -337,7 +336,7 @@ def _quote(spec: CreativeSpec, size: Tuple[int, int]) -> Image.Image:
     return img
 
 
-def _stat(spec: CreativeSpec, size: Tuple[int, int]) -> Image.Image:
+def _stat(spec: CreativeSpec, size: tuple[int, int]) -> Image.Image:
     w, h = size
     primary = hex_to_rgb(spec.primary)
     secondary = hex_to_rgb(spec.secondary, (14, 165, 233))
@@ -364,7 +363,7 @@ def _stat(spec: CreativeSpec, size: Tuple[int, int]) -> Image.Image:
     return img
 
 
-def _minimal(spec: CreativeSpec, size: Tuple[int, int]) -> Image.Image:
+def _minimal(spec: CreativeSpec, size: tuple[int, int]) -> Image.Image:
     w, h = size
     primary = hex_to_rgb(spec.primary)
     img = Image.new("RGB", size, (255, 255, 255))

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -24,7 +23,7 @@ from app.services.audit.engine import run_audit
 router = APIRouter(prefix="/api/websites", tags=["websites"])
 
 
-@router.get("", response_model=List[WebsiteOut])
+@router.get("", response_model=list[WebsiteOut])
 async def list_websites(user: CurrentUser, db: DB):
     stmt = (
         select(Website).join(Workspace, Website.workspace_id == Workspace.id)
@@ -83,7 +82,6 @@ async def update_website(payload: WebsiteUpdate, website: OwnedWebsite, db: DB):
 async def delete_website(website: OwnedWebsite, db: DB):
     await db.delete(website)
     await db.commit()
-    return None
 
 
 @router.get("/{website_id}/verification", response_model=VerificationInstructions)
@@ -96,7 +94,7 @@ async def verify_website(payload: VerifyRequest, website: OwnedWebsite, db: DB):
     ok, method, detail = await verification.verify(website.url, website.verification_token, payload.method)
     if ok:
         website.verified = True
-        website.verified_at = datetime.now(timezone.utc)
+        website.verified_at = datetime.now(UTC)
         website.verification_method = method
         await db.commit()
     return VerifyResponse(verified=ok, method=method, detail=detail)

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Dict, Iterable, Tuple
+from collections.abc import Iterable
 
 import httpx
 from jose import jwt
@@ -21,7 +21,7 @@ SCOPES = {
     "ga4": "https://www.googleapis.com/auth/analytics.readonly",
 }
 
-_cache: Dict[Tuple[str, str], Tuple[str, float]] = {}
+_cache: dict[tuple[str, str], tuple[str, float]] = {}
 
 
 class GoogleAuthError(RuntimeError):

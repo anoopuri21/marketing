@@ -1,8 +1,8 @@
 """Creative studio + social publishing tests (all network calls mocked with httpx.MockTransport)."""
 import io
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Iterator
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -238,8 +238,8 @@ def test_schedule_and_scheduler_publishes_due_posts(client: TestClient, auth: di
     from app.core.database import session_scope
     from app.services.social.service import process_due_posts
 
-    future = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
-    past = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+    future = (datetime.now(UTC) + timedelta(hours=2)).isoformat()
+    past = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
     r = client.post(f"/api/websites/{site_id}/social/posts", json={"platform": "facebook", "content": "Later", "scheduled_for": future}, headers=auth)
     assert r.json()["status"] == "scheduled"
     r = client.post(f"/api/websites/{site_id}/social/posts", json={"platform": "facebook", "content": "Now-ish", "scheduled_for": past}, headers=auth)
@@ -269,7 +269,7 @@ def test_calendar_generation_rule_based(client: TestClient, auth: dict, site_id:
 
     hours = [datetime.fromisoformat(p["scheduled_for"].replace("Z", "+00:00")).astimezone(ZoneInfo("Asia/Kolkata")).hour for p in posts]
     assert all(8 <= h <= 21 for h in hours)
-    assert all(datetime.fromisoformat(p["scheduled_for"].replace("Z", "+00:00")) > datetime.now(timezone.utc) for p in posts)
+    assert all(datetime.fromisoformat(p["scheduled_for"].replace("Z", "+00:00")) > datetime.now(UTC) for p in posts)
     assert len({p["content"] for p in posts}) == 6  # no duplicate copy
 
     # bulk schedule

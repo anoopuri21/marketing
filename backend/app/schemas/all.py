@@ -1,8 +1,8 @@
 """Pydantic request/response schemas."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional
+from datetime import UTC, datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl, field_serializer, field_validator
 
@@ -15,7 +15,7 @@ class ORMModel(BaseModel):
         # SQLite hands back naive datetimes; emit them as explicit UTC ISO strings.
         if isinstance(value, datetime):
             if value.tzinfo is None:
-                value = value.replace(tzinfo=timezone.utc)
+                value = value.replace(tzinfo=UTC)
             return value.isoformat().replace("+00:00", "Z")
         return value
 
@@ -55,7 +55,7 @@ class WorkspaceOut(ORMModel):
 
 class MeResponse(BaseModel):
     user: UserOut
-    workspaces: List[WorkspaceOut]
+    workspaces: list[WorkspaceOut]
 
 
 # --------------------------------------------------------------------------- #
@@ -67,7 +67,7 @@ class WebsiteCreate(BaseModel):
     industry: str = ""
     target_location: str = ""
     description: str = ""
-    workspace_id: Optional[int] = None
+    workspace_id: int | None = None
 
     @field_validator("url")
     @classmethod
@@ -83,12 +83,12 @@ class WebsiteCreate(BaseModel):
 
 
 class WebsiteUpdate(BaseModel):
-    name: Optional[str] = None
-    industry: Optional[str] = None
-    target_location: Optional[str] = None
-    description: Optional[str] = None
-    auto_audit_enabled: Optional[bool] = None
-    brand: Optional[Dict[str, Any]] = None
+    name: str | None = None
+    industry: str | None = None
+    target_location: str | None = None
+    description: str | None = None
+    auto_audit_enabled: bool | None = None
+    brand: dict[str, Any] | None = None
 
 
 class WebsiteOut(ORMModel):
@@ -101,13 +101,13 @@ class WebsiteOut(ORMModel):
     target_location: str
     description: str
     verified: bool
-    verified_at: Optional[datetime]
+    verified_at: datetime | None
     verification_method: str
     verification_token: str
-    last_score: Optional[float]
-    last_audit_at: Optional[datetime]
+    last_score: float | None
+    last_audit_at: datetime | None
     auto_audit_enabled: bool
-    brand: Optional[Dict[str, Any]] = None
+    brand: dict[str, Any] | None = None
     created_at: datetime
 
 
@@ -148,14 +148,14 @@ class AuditIssueOut(ORMModel):
 class AuditPageOut(ORMModel):
     id: int
     url: str
-    status_code: Optional[int]
-    response_ms: Optional[int]
+    status_code: int | None
+    response_ms: int | None
     title: str
     meta_description: str
     h1: str
     word_count: int
     canonical: str
-    data: Dict[str, Any]
+    data: dict[str, Any]
 
 
 class AuditSummaryOut(ORMModel):
@@ -164,25 +164,25 @@ class AuditSummaryOut(ORMModel):
     status: str
     trigger: str
     error: str
-    started_at: Optional[datetime]
-    finished_at: Optional[datetime]
+    started_at: datetime | None
+    finished_at: datetime | None
     pages_crawled: int
-    overall_score: Optional[float]
-    seo_score: Optional[float]
-    technical_score: Optional[float]
-    content_score: Optional[float]
-    aeo_score: Optional[float]
-    ai_readiness_score: Optional[float]
-    performance_score: Optional[float]
-    social_score: Optional[float]
+    overall_score: float | None
+    seo_score: float | None
+    technical_score: float | None
+    content_score: float | None
+    aeo_score: float | None
+    ai_readiness_score: float | None
+    performance_score: float | None
+    social_score: float | None
     created_at: datetime
 
 
 class AuditDetailOut(AuditSummaryOut):
-    summary: Dict[str, Any]
-    ai_insights: Dict[str, Any]
-    issues: List[AuditIssueOut]
-    pages: List[AuditPageOut]
+    summary: dict[str, Any]
+    ai_insights: dict[str, Any]
+    issues: list[AuditIssueOut]
+    pages: list[AuditPageOut]
 
 
 class AuditCreateResponse(BaseModel):
@@ -194,7 +194,7 @@ class AuditCreateResponse(BaseModel):
 # Keywords
 # --------------------------------------------------------------------------- #
 class KeywordCreate(BaseModel):
-    terms: List[str] = Field(min_length=1)
+    terms: list[str] = Field(min_length=1)
     location: str = ""
     language: str = "en"
 
@@ -202,11 +202,11 @@ class KeywordCreate(BaseModel):
 class KeywordRankOut(ORMModel):
     id: int
     checked_at: datetime
-    position: Optional[int]
+    position: int | None
     url: str
     engine: str
     provider: str
-    features: Dict[str, Any]
+    features: dict[str, Any]
 
 
 class KeywordOut(ORMModel):
@@ -217,14 +217,14 @@ class KeywordOut(ORMModel):
     intent: str
     source: str
     created_at: datetime
-    latest_position: Optional[int] = None
-    previous_position: Optional[int] = None
+    latest_position: int | None = None
+    previous_position: int | None = None
     latest_url: str = ""
-    last_checked_at: Optional[datetime] = None
+    last_checked_at: datetime | None = None
 
 
 class KeywordDetailOut(KeywordOut):
-    ranks: List[KeywordRankOut]
+    ranks: list[KeywordRankOut]
 
 
 class KeywordSuggestion(BaseModel):
@@ -235,7 +235,7 @@ class KeywordSuggestion(BaseModel):
 
 class KeywordSuggestResponse(BaseModel):
     provider: str
-    suggestions: List[KeywordSuggestion]
+    suggestions: list[KeywordSuggestion]
 
 
 # --------------------------------------------------------------------------- #
@@ -246,17 +246,17 @@ class TaskCreate(BaseModel):
     description: str = ""
     category: str = "seo"
     priority: Literal["low", "medium", "high", "critical"] = "medium"
-    due_date: Optional[datetime] = None
+    due_date: datetime | None = None
     page_url: str = ""
 
 
 class TaskUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    category: Optional[str] = None
-    priority: Optional[Literal["low", "medium", "high", "critical"]] = None
-    status: Optional[Literal["todo", "in_progress", "done", "dismissed"]] = None
-    due_date: Optional[datetime] = None
+    title: str | None = None
+    description: str | None = None
+    category: str | None = None
+    priority: Literal["low", "medium", "high", "critical"] | None = None
+    status: Literal["todo", "in_progress", "done", "dismissed"] | None = None
+    due_date: datetime | None = None
 
 
 class TaskOut(ORMModel):
@@ -269,8 +269,8 @@ class TaskOut(ORMModel):
     status: str
     source: str
     source_issue_code: str
-    due_date: Optional[datetime]
-    completed_at: Optional[datetime]
+    due_date: datetime | None
+    completed_at: datetime | None
     page_url: str
     created_at: datetime
     updated_at: datetime
@@ -284,13 +284,13 @@ class PlanRequest(BaseModel):
 class PlanWeek(BaseModel):
     week: int
     theme: str
-    tasks: List[TaskCreate]
+    tasks: list[TaskCreate]
 
 
 class PlanResponse(BaseModel):
     provider: str
     strategy_summary: str
-    weeks: List[PlanWeek]
+    weeks: list[PlanWeek]
     created_tasks: int
 
 
@@ -298,7 +298,7 @@ class PlanResponse(BaseModel):
 # Reports
 # --------------------------------------------------------------------------- #
 class ReportScheduleCreate(BaseModel):
-    recipients: List[EmailStr] = Field(min_length=1)
+    recipients: list[EmailStr] = Field(min_length=1)
     frequency: Literal["weekly", "monthly"] = "weekly"
     day_of_week: int = Field(default=0, ge=0, le=6)
     day_of_month: int = Field(default=1, ge=1, le=28)
@@ -310,21 +310,21 @@ class ReportScheduleCreate(BaseModel):
 
 
 class ReportScheduleUpdate(BaseModel):
-    recipients: Optional[List[EmailStr]] = None
-    frequency: Optional[Literal["weekly", "monthly"]] = None
-    day_of_week: Optional[int] = Field(default=None, ge=0, le=6)
-    day_of_month: Optional[int] = Field(default=None, ge=1, le=28)
-    hour: Optional[int] = Field(default=None, ge=0, le=23)
-    minute: Optional[int] = Field(default=None, ge=0, le=59)
-    timezone: Optional[str] = None
-    enabled: Optional[bool] = None
-    run_fresh_audit: Optional[bool] = None
+    recipients: list[EmailStr] | None = None
+    frequency: Literal["weekly", "monthly"] | None = None
+    day_of_week: int | None = Field(default=None, ge=0, le=6)
+    day_of_month: int | None = Field(default=None, ge=1, le=28)
+    hour: int | None = Field(default=None, ge=0, le=23)
+    minute: int | None = Field(default=None, ge=0, le=59)
+    timezone: str | None = None
+    enabled: bool | None = None
+    run_fresh_audit: bool | None = None
 
 
 class ReportScheduleOut(ORMModel):
     id: int
     website_id: int
-    recipients: List[str]
+    recipients: list[str]
     frequency: str
     day_of_week: int
     day_of_month: int
@@ -333,18 +333,18 @@ class ReportScheduleOut(ORMModel):
     timezone: str
     enabled: bool
     run_fresh_audit: bool
-    next_run_at: Optional[datetime]
-    last_run_at: Optional[datetime]
+    next_run_at: datetime | None
+    last_run_at: datetime | None
     created_at: datetime
 
 
 class ReportRunOut(ORMModel):
     id: int
-    schedule_id: Optional[int]
+    schedule_id: int | None
     website_id: int
     period_label: str
     status: str
-    recipients: List[str]
+    recipients: list[str]
     subject: str
     delivery_info: str
     error: str
@@ -352,7 +352,7 @@ class ReportRunOut(ORMModel):
 
 
 class ReportSendNowRequest(BaseModel):
-    recipients: Optional[List[EmailStr]] = None
+    recipients: list[EmailStr] | None = None
     run_fresh_audit: bool = False
     period: Literal["weekly", "monthly"] = "weekly"
 
@@ -364,16 +364,16 @@ class IntegrationOut(ORMModel):
     id: int
     provider: str
     status: str
-    connected_at: Optional[datetime]
-    config: Dict[str, Any]
-    last_synced_at: Optional[datetime] = None
+    connected_at: datetime | None
+    config: dict[str, Any]
+    last_synced_at: datetime | None = None
     last_error: str = ""
-    summary: Dict[str, Any] = Field(default_factory=dict)
+    summary: dict[str, Any] = Field(default_factory=dict)
 
 
 class IntegrationUpsert(BaseModel):
     provider: str
-    config: Dict[str, Any] = Field(default_factory=dict)
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------- #
@@ -397,12 +397,12 @@ class DashboardOut(BaseModel):
     audits_completed: int
     open_tasks: int
     tracked_keywords: int
-    avg_score: Optional[float]
+    avg_score: float | None
     reports_sent: int
     leads_total: int = 0
     leads_active: int = 0  # contacted + replied + qualified
     leads_won: int = 0
     follow_ups_due: int = 0
-    recent_audits: List[AuditSummaryOut]
-    upcoming_reports: List[ReportScheduleOut]
-    open_issue_counts: Dict[str, int]
+    recent_audits: list[AuditSummaryOut]
+    upcoming_reports: list[ReportScheduleOut]
+    open_issue_counts: dict[str, int]

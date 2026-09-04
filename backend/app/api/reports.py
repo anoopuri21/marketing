@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import List
-
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
@@ -22,7 +20,7 @@ from app.services.scheduler import compute_next_run
 router = APIRouter(prefix="/api/websites/{website_id}/reports", tags=["reports"])
 
 
-@router.get("/schedules", response_model=List[ReportScheduleOut])
+@router.get("/schedules", response_model=list[ReportScheduleOut])
 async def list_schedules(website: OwnedWebsite, db: DB):
     return (await db.execute(select(ReportSchedule).where(ReportSchedule.website_id == website.id).order_by(ReportSchedule.id))).scalars().all()
 
@@ -61,10 +59,9 @@ async def delete_schedule(schedule_id: int, website: OwnedWebsite, db: DB):
         raise HTTPException(status_code=404, detail="Schedule not found")
     await db.delete(sched)
     await db.commit()
-    return None
 
 
-@router.get("/runs", response_model=List[ReportRunOut])
+@router.get("/runs", response_model=list[ReportRunOut])
 async def list_runs(website: OwnedWebsite, db: DB, limit: int = 30):
     return (await db.execute(
         select(ReportRun).where(ReportRun.website_id == website.id).order_by(ReportRun.created_at.desc()).limit(min(limit, 100))

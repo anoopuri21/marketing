@@ -4,7 +4,8 @@ Google's OAuth token endpoint and the two data APIs are served by an httpx MockT
 so the full flow (JWT signing → token → queries → local tables → report email) runs offline.
 """
 import json
-from typing import Iterator
+from collections.abc import Iterator
+from datetime import UTC
 
 import httpx
 import pytest
@@ -248,7 +249,7 @@ def test_scheduler_sync_respects_interval(client: TestClient, auth: dict, site_i
     # Both integrations were synced moments ago → nothing due
     assert asyncio.run(scheduler.process_integration_syncs()) == 0
     # Force them due by rewinding last_synced_at
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from sqlalchemy import update
 
@@ -257,7 +258,7 @@ def test_scheduler_sync_respects_interval(client: TestClient, auth: dict, site_i
 
     async def rewind():
         async with session_scope() as db:
-            await db.execute(update(Integration).values(last_synced_at=datetime.now(timezone.utc) - timedelta(days=2)))
+            await db.execute(update(Integration).values(last_synced_at=datetime.now(UTC) - timedelta(days=2)))
 
     asyncio.run(rewind())
     assert asyncio.run(scheduler.process_integration_syncs()) == 2

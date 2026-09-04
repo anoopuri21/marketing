@@ -2,16 +2,16 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.api.deps import DB, OwnedWebsite
+from app.core.time import aware
 from app.models import Integration, SearchQueryStat
-from app.models.entities import aware
 from app.schemas.all import IntegrationOut, IntegrationUpsert
 from app.services.google.analytics import sync_ga4
 from app.services.google.auth import GoogleAuthError
@@ -20,7 +20,7 @@ from app.services.google.search_console import sync_search_console
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["integrations"])
 
-SUPPORTED_INTEGRATIONS: Dict[str, Dict[str, Any]] = {
+SUPPORTED_INTEGRATIONS: dict[str, dict[str, Any]] = {
     "google_search_console": {
         "label": "Google Search Console", "status": "live", "fields": ["service_account_json"], "optional_fields": ["site_url"],
         "help": "Create a service account in Google Cloud (enable the Search Console API), download its JSON key, "
@@ -41,8 +41,8 @@ SUPPORTED_INTEGRATIONS: Dict[str, Dict[str, Any]] = {
 SECRET_HINTS = ("token", "secret", "json", "password", "key")
 
 
-def _mask(config: Dict[str, Any]) -> Dict[str, Any]:
-    out: Dict[str, Any] = {}
+def _mask(config: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
     for k, v in (config or {}).items():
         if v and any(h in k for h in SECRET_HINTS):
             if k == "service_account_json":
@@ -67,7 +67,7 @@ def _to_out(row: Integration) -> IntegrationOut:
     )
 
 
-async def _get(db, website_id: int, provider: str) -> Optional[Integration]:
+async def _get(db, website_id: int, provider: str) -> Integration | None:
     return (await db.execute(
         select(Integration).where(Integration.website_id == website_id, Integration.provider == provider)
     )).scalar_one_or_none()
@@ -78,7 +78,7 @@ async def integrations_catalog():
     return SUPPORTED_INTEGRATIONS
 
 
-@router.get("/websites/{website_id}/integrations", response_model=List[IntegrationOut])
+@router.get("/websites/{website_id}/integrations", response_model=list[IntegrationOut])
 async def list_integrations(website: OwnedWebsite, db: DB):
     rows = (await db.execute(select(Integration).where(Integration.website_id == website.id))).scalars().all()
     return [_to_out(r) for r in rows]
@@ -116,7 +116,7 @@ async def upsert_integration(payload: IntegrationUpsert, website: OwnedWebsite, 
     return _to_out(row)
 
 
-async def _sync(db, website, row: Integration) -> Dict[str, Any]:
+async def _sync(db, website, row: Integration) -> dict[str, Any]:
     if row.provider == "google_search_console":
         return await sync_search_console(db, website, row)
     if row.provider == "ga4":
@@ -151,7 +151,6 @@ async def delete_integration(provider: str, website: OwnedWebsite, db: DB):
     if row:
         await db.delete(row)
         await db.commit()
-    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -163,17 +162,17 @@ class SearchStatOut(BaseModel):
     impressions: int
     ctr: float
     position: float
-    prev_clicks: Optional[int] = None
-    prev_position: Optional[float] = None
+    prev_clicks: int | None = None
+    prev_position: float | None = None
 
 
 class SearchPerformanceOut(BaseModel):
     connected: bool
-    synced_at: Optional[datetime] = None
-    summary: Dict[str, Any] = {}
-    queries: List[SearchStatOut] = []
-    pages: List[SearchStatOut] = []
-    opportunities: List[SearchStatOut] = []  # positions 5-20 with impressions: quick-win candidates
+    synced_at: datetime | None = None
+    summary: dict[str, Any] = {}
+    queries: list[SearchStatOut] = []
+    pages: list[SearchStatOut] = []
+    opportunities: list[SearchStatOut] = []  # positions 5-20 with impressions: quick-win candidates
     error: str = ""
 
 
@@ -186,8 +185,11 @@ async def search_performance(website: OwnedWebsite, db: DB, limit: int = 100):
     queries = sorted([s for s in stats if s.kind == "query"], key=lambda s: (-s.clicks, -s.impressions))
     pages = sorted([s for s in stats if s.kind == "page"], key=lambda s: (-s.clicks, -s.impressions))
     opps = sorted([s for s in queries if 4.5 <= s.position <= 20 and s.impressions >= 20], key=lambda s: -s.impressions)
-    conv = lambda s: SearchStatOut(key=s.key, clicks=s.clicks, impressions=s.impressions, ctr=round(s.ctr * 100, 2), position=round(s.position, 1),
-                                   prev_clicks=s.prev_clicks, prev_position=round(s.prev_position, 1) if s.prev_position is not None else None)
+
+    def conv(s: SearchQueryStat) -> SearchStatOut:
+        return SearchStatOut(key=s.key, clicks=s.clicks, impressions=s.impressions, ctr=round(s.ctr * 100, 2), position=round(s.position, 1),
+                             prev_clicks=s.prev_clicks, prev_position=round(s.prev_position, 1) if s.prev_position is not None else None)
+
     return SearchPerformanceOut(
         connected=row.status in ("connected", "error"), synced_at=row.last_synced_at, summary=row.summary or {},
         queries=[conv(s) for s in queries[:limit]], pages=[conv(s) for s in pages[:50]], opportunities=[conv(s) for s in opps[:25]],

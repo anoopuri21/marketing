@@ -6,8 +6,7 @@ integrations, and placeholder tables for social posts & leads (phase 2).
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
-from typing import List, Optional
+from datetime import date, datetime
 
 from sqlalchemy import (
     JSON,
@@ -24,17 +23,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.time import aware, utcnow  # re-exported for backwards compatibility
 
-
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def aware(dt: Optional[datetime]) -> Optional[datetime]:
-    """SQLite returns naive datetimes; treat them as UTC so comparisons are safe."""
-    if dt is None:
-        return None
-    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+__all__ = ["aware", "utcnow"]
 
 
 class TimestampMixin:
@@ -56,7 +47,7 @@ class User(TimestampMixin, Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    workspaces: Mapped[List["Workspace"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+    workspaces: Mapped[list[Workspace]] = relationship(back_populates="owner", cascade="all, delete-orphan")
 
 
 class Workspace(TimestampMixin, Base):
@@ -69,7 +60,7 @@ class Workspace(TimestampMixin, Base):
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
 
     owner: Mapped[User] = relationship(back_populates="workspaces")
-    websites: Mapped[List["Website"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
+    websites: Mapped[list[Website]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
 
 
 # --------------------------------------------------------------------------- #
@@ -90,31 +81,31 @@ class Website(TimestampMixin, Base):
     # Ownership verification (meta tag / DNS TXT / HTML file)
     verification_token: Mapped[str] = mapped_column(String(64), nullable=False)
     verified: Mapped[bool] = mapped_column(Boolean, default=False)
-    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     verification_method: Mapped[str] = mapped_column(String(32), default="")
 
     # Denormalised health snapshot (from last audit)
-    last_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    last_audit_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_audit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     auto_audit_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Brand kit used by the creative studio: {primary, secondary, text, logo_path, logo_text, style}
-    brand: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    brand: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     workspace: Mapped[Workspace] = relationship(back_populates="websites")
-    audits: Mapped[List["Audit"]] = relationship(
+    audits: Mapped[list[Audit]] = relationship(
         back_populates="website", cascade="all, delete-orphan", order_by="Audit.created_at.desc()"
     )
-    keywords: Mapped[List["Keyword"]] = relationship(back_populates="website", cascade="all, delete-orphan")
-    tasks: Mapped[List["Task"]] = relationship(back_populates="website", cascade="all, delete-orphan")
-    report_schedules: Mapped[List["ReportSchedule"]] = relationship(
+    keywords: Mapped[list[Keyword]] = relationship(back_populates="website", cascade="all, delete-orphan")
+    tasks: Mapped[list[Task]] = relationship(back_populates="website", cascade="all, delete-orphan")
+    report_schedules: Mapped[list[ReportSchedule]] = relationship(
         back_populates="website", cascade="all, delete-orphan"
     )
-    integrations: Mapped[List["Integration"]] = relationship(back_populates="website", cascade="all, delete-orphan")
-    social_posts: Mapped[List["SocialPost"]] = relationship(back_populates="website", cascade="all, delete-orphan")
-    creatives: Mapped[List["Creative"]] = relationship(back_populates="website", cascade="all, delete-orphan")
-    leads: Mapped[List["Lead"]] = relationship(back_populates="website", cascade="all, delete-orphan")
+    integrations: Mapped[list[Integration]] = relationship(back_populates="website", cascade="all, delete-orphan")
+    social_posts: Mapped[list[SocialPost]] = relationship(back_populates="website", cascade="all, delete-orphan")
+    creatives: Mapped[list[Creative]] = relationship(back_populates="website", cascade="all, delete-orphan")
+    leads: Mapped[list[Lead]] = relationship(back_populates="website", cascade="all, delete-orphan")
 
 
 # --------------------------------------------------------------------------- #
@@ -129,27 +120,27 @@ class Audit(TimestampMixin, Base):
     trigger: Mapped[str] = mapped_column(String(16), default="manual")  # manual|scheduled|report
     error: Mapped[str] = mapped_column(Text, default="")
 
-    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     pages_crawled: Mapped[int] = mapped_column(Integer, default=0)
 
     # Scores 0-100
-    overall_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    seo_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    technical_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    content_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    aeo_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # answer-engine optimisation
-    ai_readiness_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # LLM/AI search readiness
-    performance_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    social_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    overall_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    seo_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    technical_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    content_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    aeo_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # answer-engine optimisation
+    ai_readiness_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # LLM/AI search readiness
+    performance_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    social_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     summary: Mapped[dict] = mapped_column(JSON, default=dict)  # site-level facts (robots, sitemap, https ...)
     ai_insights: Mapped[dict] = mapped_column(JSON, default=dict)  # LLM generated recommendations
 
     website: Mapped[Website] = relationship(back_populates="audits")
-    pages: Mapped[List["AuditPage"]] = relationship(back_populates="audit", cascade="all, delete-orphan")
-    issues: Mapped[List["AuditIssue"]] = relationship(back_populates="audit", cascade="all, delete-orphan")
+    pages: Mapped[list[AuditPage]] = relationship(back_populates="audit", cascade="all, delete-orphan")
+    issues: Mapped[list[AuditIssue]] = relationship(back_populates="audit", cascade="all, delete-orphan")
 
 
 class AuditPage(Base):
@@ -158,8 +149,8 @@ class AuditPage(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     audit_id: Mapped[int] = mapped_column(ForeignKey("audits.id", ondelete="CASCADE"), index=True)
     url: Mapped[str] = mapped_column(String(2048), nullable=False)
-    status_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    response_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    response_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     title: Mapped[str] = mapped_column(Text, default="")
     meta_description: Mapped[str] = mapped_column(Text, default="")
     h1: Mapped[str] = mapped_column(Text, default="")
@@ -203,7 +194,7 @@ class Keyword(TimestampMixin, Base):
     source: Mapped[str] = mapped_column(String(32), default="manual")  # manual|discovered|ai
 
     website: Mapped[Website] = relationship(back_populates="keywords")
-    ranks: Mapped[List["KeywordRank"]] = relationship(
+    ranks: Mapped[list[KeywordRank]] = relationship(
         back_populates="keyword", cascade="all, delete-orphan", order_by="KeywordRank.checked_at.desc()"
     )
 
@@ -214,7 +205,7 @@ class KeywordRank(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     keyword_id: Mapped[int] = mapped_column(ForeignKey("keywords.id", ondelete="CASCADE"), index=True)
     checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
-    position: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # None = not in top 100
+    position: Mapped[int | None] = mapped_column(Integer, nullable=True)  # None = not in top 100
     url: Mapped[str] = mapped_column(Text, default="")
     engine: Mapped[str] = mapped_column(String(16), default="google")
     provider: Mapped[str] = mapped_column(String(32), default="")
@@ -238,8 +229,8 @@ class Task(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(16), default="todo")  # todo|in_progress|done|dismissed
     source: Mapped[str] = mapped_column(String(32), default="manual")  # manual|audit|ai
     source_issue_code: Mapped[str] = mapped_column(String(64), default="")
-    due_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     page_url: Mapped[str] = mapped_column(Text, default="")
 
     website: Mapped[Website] = relationship(back_populates="tasks")
@@ -262,11 +253,11 @@ class ReportSchedule(TimestampMixin, Base):
     timezone: Mapped[str] = mapped_column(String(64), default="Asia/Kolkata")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     run_fresh_audit: Mapped[bool] = mapped_column(Boolean, default=True)
-    next_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
-    last_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     website: Mapped[Website] = relationship(back_populates="report_schedules")
-    runs: Mapped[List["ReportRun"]] = relationship(
+    runs: Mapped[list[ReportRun]] = relationship(
         back_populates="schedule", cascade="all, delete-orphan", order_by="ReportRun.created_at.desc()"
     )
 
@@ -275,7 +266,7 @@ class ReportRun(TimestampMixin, Base):
     __tablename__ = "report_runs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    schedule_id: Mapped[Optional[int]] = mapped_column(
+    schedule_id: Mapped[int | None] = mapped_column(
         ForeignKey("report_schedules.id", ondelete="SET NULL"), nullable=True, index=True
     )
     website_id: Mapped[int] = mapped_column(ForeignKey("websites.id", ondelete="CASCADE"), index=True)
@@ -287,7 +278,7 @@ class ReportRun(TimestampMixin, Base):
     delivery_info: Mapped[str] = mapped_column(Text, default="")
     error: Mapped[str] = mapped_column(Text, default="")
 
-    schedule: Mapped[Optional[ReportSchedule]] = relationship(back_populates="runs")
+    schedule: Mapped[ReportSchedule | None] = relationship(back_populates="runs")
 
 
 # --------------------------------------------------------------------------- #
@@ -302,8 +293,8 @@ class Integration(TimestampMixin, Base):
     provider: Mapped[str] = mapped_column(String(32))  # google_search_console|ga4|facebook|instagram|linkedin|x
     status: Mapped[str] = mapped_column(String(16), default="disconnected")  # connected|disconnected|error
     config: Mapped[dict] = mapped_column(JSON, default=dict)
-    connected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str] = mapped_column(Text, default="")
     summary: Mapped[dict] = mapped_column(JSON, default=dict)  # last sync snapshot (totals, daily series ...)
 
@@ -323,10 +314,10 @@ class SearchQueryStat(Base):
     impressions: Mapped[int] = mapped_column(Integer, default=0)
     ctr: Mapped[float] = mapped_column(Float, default=0.0)
     position: Mapped[float] = mapped_column(Float, default=0.0)
-    prev_clicks: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    prev_position: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    period_start: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    period_end: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    prev_clicks: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    prev_position: Mapped[float | None] = mapped_column(Float, nullable=True)
+    period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -361,10 +352,10 @@ class SocialPost(TimestampMixin, Base):
     hashtags: Mapped[list] = mapped_column(JSON, default=list)
     link_url: Mapped[str] = mapped_column(String(2048), default="")
     media_urls: Mapped[list] = mapped_column(JSON, default=list)  # external image URLs
-    creative_id: Mapped[Optional[int]] = mapped_column(ForeignKey("creatives.id", ondelete="SET NULL"), nullable=True)
+    creative_id: Mapped[int | None] = mapped_column(ForeignKey("creatives.id", ondelete="SET NULL"), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="draft", index=True)  # draft|scheduled|publishing|published|failed
-    scheduled_for: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
-    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     external_id: Mapped[str] = mapped_column(String(255), default="")
     external_url: Mapped[str] = mapped_column(String(2048), default="")
     error: Mapped[str] = mapped_column(Text, default="")
@@ -372,7 +363,7 @@ class SocialPost(TimestampMixin, Base):
     campaign: Mapped[str] = mapped_column(String(64), default="")  # e.g. "autoplan-2026-09-04"
 
     website: Mapped[Website] = relationship(back_populates="social_posts")
-    creative: Mapped[Optional[Creative]] = relationship()
+    creative: Mapped[Creative | None] = relationship()
 
 
 class Lead(TimestampMixin, Base):
@@ -396,23 +387,23 @@ class Lead(TimestampMixin, Base):
     category: Mapped[str] = mapped_column(String(255), default="")  # e.g. "Dentist"
     location: Mapped[str] = mapped_column(String(255), default="")
     address: Mapped[str] = mapped_column(String(512), default="")
-    rating: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    reviews: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    rating: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reviews: Mapped[int | None] = mapped_column(Integer, nullable=True)
     place_id: Mapped[str] = mapped_column(String(255), default="", index=True)
     search_query: Mapped[str] = mapped_column(String(255), default="")
     campaign: Mapped[str] = mapped_column(String(64), default="", index=True)  # search batch id
     tags: Mapped[list] = mapped_column(JSON, default=list)
 
     # qualification (mini audit of the lead's website)
-    qualified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    website_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    qualified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    website_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     audit: Mapped[dict] = mapped_column(JSON, default=dict)  # scores, gaps, facts
     pitch: Mapped[dict] = mapped_column(JSON, default=dict)  # angle, email, whatsapp, follow_ups, provider
     qualify_error: Mapped[str] = mapped_column(Text, default="")
 
     # pipeline
-    last_contacted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    next_follow_up_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_contacted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_follow_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     activity: Mapped[list] = mapped_column(JSON, default=list)  # [{at, kind, note}]
 
     website: Mapped[Website] = relationship(back_populates="leads")

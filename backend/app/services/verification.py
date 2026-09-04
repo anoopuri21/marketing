@@ -3,12 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Tuple
 from urllib.parse import urlparse
 
 import httpx
 
-from app.core.config import settings
 from app.core.http import make_client
 
 META_NAME = "rankpilot-verification"
@@ -85,7 +83,7 @@ async def _check_dns(url: str, token: str) -> bool:
     return False
 
 
-async def verify(url: str, token: str, method: str = "auto") -> Tuple[bool, str, str]:
+async def verify(url: str, token: str, method: str = "auto") -> tuple[bool, str, str]:
     """Returns (verified, method_used, detail)."""
     async with make_client() as client:
         checks = []
@@ -96,7 +94,7 @@ async def verify(url: str, token: str, method: str = "auto") -> Tuple[bool, str,
         if method in ("auto", "dns"):
             checks.append(("dns", _check_dns(url, token)))
         results = await asyncio.gather(*(c[1] for c in checks), return_exceptions=True)
-    for (name, _), ok in zip(checks, results):
+    for (name, _), ok in zip(checks, results, strict=True):
         if ok is True:
             return True, name, f"Verified via {name}."
     tried = ", ".join(c[0] for c in checks)

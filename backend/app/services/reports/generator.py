@@ -2,17 +2,15 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import List, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
+from app.core.time import aware
 from app.models import Audit, AuditIssue, Integration, ReportRun, SearchQueryStat, Task, Website
-from app.models.entities import aware
 from app.services.rank_tracker import enrich_keyword, load_keywords
 from app.services.reports.mailer import send_email
 
@@ -32,7 +30,7 @@ def score_color(v) -> str:
     return "#dc2626"
 
 
-def pct_change(cur, prev) -> Optional[float]:
+def pct_change(cur, prev) -> float | None:
     try:
         cur, prev = float(cur or 0), float(prev or 0)
     except (TypeError, ValueError):
@@ -48,7 +46,7 @@ def severity_color(sev: str) -> str:
 
 async def build_report_html(db, website: Website, period: str = "weekly") -> tuple[str, str, dict]:
     """Returns (subject, html, context)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     days = 7 if period == "weekly" else 30
     since = now - timedelta(days=days)
 
@@ -56,10 +54,10 @@ async def build_report_html(db, website: Website, period: str = "weekly") -> tup
         select(Audit).where(Audit.website_id == website.id, Audit.status == "completed")
         .order_by(Audit.finished_at.desc()).limit(2)
     )).scalars().all()
-    latest: Optional[Audit] = audits[0] if audits else None
-    previous: Optional[Audit] = audits[1] if len(audits) > 1 else None
+    latest: Audit | None = audits[0] if audits else None
+    previous: Audit | None = audits[1] if len(audits) > 1 else None
 
-    issues: List[AuditIssue] = []
+    issues: list[AuditIssue] = []
     if latest:
         issues = (await db.execute(select(AuditIssue).where(AuditIssue.audit_id == latest.id))).scalars().all()
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
@@ -103,7 +101,7 @@ async def build_report_html(db, website: Website, period: str = "weekly") -> tup
         ("Performance", latest.performance_score if latest else None),
         ("Social", latest.social_score if latest else None),
     ]
-    sev_counts = {}
+    sev_counts: dict[str, int] = {}
     for i in issues:
         sev_counts[i.severity] = sev_counts.get(i.severity, 0) + 1
     stats = [
@@ -147,10 +145,10 @@ async def build_report_html(db, website: Website, period: str = "weekly") -> tup
     return subject, html, ctx
 
 
-async def generate_and_send(db, website: Website, recipients: List[str], period: str = "weekly",
-                            schedule_id: Optional[int] = None) -> ReportRun:
+async def generate_and_send(db, website: Website, recipients: list[str], period: str = "weekly",
+                            schedule_id: int | None = None) -> ReportRun:
     run = ReportRun(schedule_id=schedule_id, website_id=website.id, recipients=list(recipients),
-                    period_label=f"{period} · {datetime.now(timezone.utc).strftime('%Y-%m-%d')}", status="pending")
+                    period_label=f"{period} · {datetime.now(UTC).strftime('%Y-%m-%d')}", status="pending")
     db.add(run)
     await db.flush()
     try:

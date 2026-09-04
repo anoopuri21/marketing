@@ -3,11 +3,13 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Literal
+from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent  # backend/
+INSECURE_SECRET_KEY = "change-me-in-production-please"
 
 
 class Settings(BaseSettings):
@@ -20,7 +22,8 @@ class Settings(BaseSettings):
     # --- App -------------------------------------------------------------
     app_name: str = "RankPilot"
     environment: Literal["development", "production", "test"] = "development"
-    secret_key: str = "change-me-in-production-please"
+    secret_key: str = INSECURE_SECRET_KEY  # MUST be overridden in production (enforced below)
+    log_level: str = "INFO"
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
     public_base_url: str = "http://localhost:8000"
     frontend_url: str = "http://localhost:5173"
@@ -75,8 +78,25 @@ class Settings(BaseSettings):
     auto_audit_interval_days: int = 7
     integration_sync_interval_hours: int = 24
 
+    @model_validator(mode="after")
+    def _production_guard(self) -> Settings:
+        """Refuse to boot a production deployment with the shipped defaults."""
+        if self.environment == "production":
+            problems = []
+            if self.secret_key == INSECURE_SECRET_KEY or len(self.secret_key) < 32:
+                problems.append("SECRET_KEY must be set to a random string of at least 32 characters")
+            if self.cors_origins.strip() == "*":
+                problems.append("CORS_ORIGINS must list the frontend origin(s) instead of '*'")
+            if problems:
+                raise ValueError("Unsafe production configuration: " + "; ".join(problems))
+        return self
+
     @property
-    def cors_origin_list(self) -> List[str]:
+    def is_production(self) -> bool:
+        return self.environment == "production"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()] or ["*"]
 
     # Convenience -----------------------------------------------------------

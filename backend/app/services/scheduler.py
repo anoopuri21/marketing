@@ -13,8 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -23,14 +22,21 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.database import session_scope
+from app.core.time import aware
 from app.models import Audit, Integration, ReportSchedule, Website
-from app.models.entities import aware
 from app.services.audit.engine import create_and_run_audit, run_audit
 from app.services.reports.generator import generate_and_send
 
 log = logging.getLogger(__name__)
 
-_scheduler: Optional[AsyncIOScheduler] = None
+
+
+class _SchedulerState:
+    scheduler: AsyncIOScheduler | None = None
+
+
+_state = _SchedulerState()
+_background_tasks: set[asyncio.Task] = set()
 _lock = asyncio.Lock()
 
 
@@ -41,9 +47,9 @@ def _tz(name: str) -> ZoneInfo:
         return ZoneInfo("UTC")
 
 
-def compute_next_run(schedule: ReportSchedule, after: Optional[datetime] = None) -> datetime:
+def compute_next_run(schedule: ReportSchedule, after: datetime | None = None) -> datetime:
     tz = _tz(schedule.timezone)
-    now_local = (after or datetime.now(timezone.utc)).astimezone(tz)
+    now_local = (after or datetime.now(UTC)).astimezone(tz)
     candidate = now_local.replace(hour=schedule.hour, minute=schedule.minute, second=0, microsecond=0)
     if schedule.frequency == "monthly":
         candidate = candidate.replace(day=min(schedule.day_of_month, 28))
@@ -56,11 +62,11 @@ def compute_next_run(schedule: ReportSchedule, after: Optional[datetime] = None)
         candidate = candidate + timedelta(days=delta_days)
         while candidate <= now_local:
             candidate += timedelta(days=7)
-    return candidate.astimezone(timezone.utc)
+    return candidate.astimezone(UTC)
 
 
 async def process_due_reports() -> int:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     sent = 0
     async with session_scope() as db:
         due = (await db.execute(
@@ -78,7 +84,7 @@ async def process_due_reports() -> int:
                 if sched is None or website is None:
                     continue
                 await generate_and_send(db, website, sched.recipients, sched.frequency, schedule_id=sched.id)
-                sched.last_run_at = datetime.now(timezone.utc)
+                sched.last_run_at = datetime.now(UTC)
                 sched.next_run_at = compute_next_run(sched)
                 sent += 1
         except Exception:
@@ -91,7 +97,7 @@ async def process_due_reports() -> int:
 
 
 async def process_auto_audits() -> int:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.auto_audit_interval_days)
+    cutoff = datetime.now(UTC) - timedelta(days=settings.auto_audit_interval_days)
     async with session_scope() as db:
         sites = (await db.execute(select(Website).where(Website.auto_audit_enabled.is_(True)))).scalars().all()
         todo = []
@@ -117,6 +123,8 @@ async def _refresh_integrations(website_id: int) -> None:
 
     async with session_scope() as db:
         website = await db.get(Website, website_id)
+        if website is None:
+            return
         rows = (await db.execute(select(Integration).where(Integration.website_id == website_id,
                                                             Integration.provider.in_(["google_search_console", "ga4"]),
                                                             Integration.status == "connected"))).scalars().all()
@@ -132,7 +140,7 @@ async def process_integration_syncs() -> int:
     from app.services.google.analytics import sync_ga4
     from app.services.google.search_console import sync_search_console
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=settings.integration_sync_interval_hours)
+    cutoff = datetime.now(UTC) - timedelta(hours=settings.integration_sync_interval_hours)
     async with session_scope() as db:
         rows = (await db.execute(select(Integration).where(Integration.provider.in_(["google_search_console", "ga4"]),
                                                             Integration.status.in_(["connected", "error"])))).scalars().all()
@@ -153,7 +161,7 @@ async def process_integration_syncs() -> int:
             except Exception as exc:
                 row.status = "error"
                 row.last_error = f"{type(exc).__name__}: {exc}"[:500]
-                row.last_synced_at = datetime.now(timezone.utc)  # back off until the next interval
+                row.last_synced_at = datetime.now(UTC)  # back off until the next interval
                 log.warning("integration %s sync failed: %s", row_id, exc)
     return synced
 
@@ -186,14 +194,16 @@ async def recover_stale_audits() -> None:
         stale = (await db.execute(select(Audit).where(Audit.status.in_(["queued", "running"])))).scalars().all()
         ids = []
         for a in stale:
-            age = datetime.now(timezone.utc) - aware(a.started_at or a.created_at)
+            age = datetime.now(UTC) - aware(a.started_at or a.created_at)
             if age > timedelta(hours=2):
                 a.status = "failed"
                 a.error = "Interrupted (server restart)"
             else:
                 ids.append(a.id)
     for audit_id in ids:
-        asyncio.create_task(run_audit(audit_id))
+        task = asyncio.create_task(run_audit(audit_id))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
 
 async def tick() -> None:
@@ -211,17 +221,16 @@ async def tick() -> None:
 
 
 def start_scheduler() -> None:
-    global _scheduler
-    if not settings.scheduler_enabled or _scheduler is not None:
+    if not settings.scheduler_enabled or _state.scheduler is not None:
         return
-    _scheduler = AsyncIOScheduler(timezone="UTC")
-    _scheduler.add_job(tick, IntervalTrigger(seconds=settings.scheduler_tick_seconds), id="tick", max_instances=1, coalesce=True)
-    _scheduler.start()
+    scheduler = AsyncIOScheduler(timezone="UTC")
+    scheduler.add_job(tick, IntervalTrigger(seconds=settings.scheduler_tick_seconds), id="tick", max_instances=1, coalesce=True)
+    scheduler.start()
+    _state.scheduler = scheduler
     log.info("scheduler started (tick every %ss)", settings.scheduler_tick_seconds)
 
 
 def stop_scheduler() -> None:
-    global _scheduler
-    if _scheduler is not None:
-        _scheduler.shutdown(wait=False)
-        _scheduler = None
+    if _state.scheduler is not None:
+        _state.scheduler.shutdown(wait=False)
+        _state.scheduler = None

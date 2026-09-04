@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Dict, Optional
+from typing import Any
 
 import httpx
 
@@ -35,7 +35,7 @@ class AIClient:
             return await self._anthropic(system, user, max_tokens, temperature)
         raise RuntimeError("No AI provider configured")
 
-    async def complete_json(self, system: str, user: str, max_tokens: int = 2000) -> Dict[str, Any]:
+    async def complete_json(self, system: str, user: str, max_tokens: int = 2000) -> dict[str, Any]:
         system_json = system + "\n\nRespond ONLY with a single valid JSON object. No prose, no markdown fences."
         text = await self.complete_text(system_json, user, max_tokens=max_tokens, temperature=0.3)
         return _extract_json(text)
@@ -77,7 +77,7 @@ class AIClient:
         return "".join(block.get("text", "") for block in data.get("content", []))
 
 
-def _extract_json(text: str) -> Dict[str, Any]:
+def _extract_json(text: str) -> dict[str, Any]:
     text = text.strip()
     fence = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.S)
     if fence:

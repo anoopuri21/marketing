@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
@@ -17,12 +16,12 @@ router = APIRouter(prefix="/api/websites/{website_id}", tags=["tasks & planning"
 PRIORITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 
 
-@router.get("/tasks", response_model=List[TaskOut])
-async def list_tasks(website: OwnedWebsite, db: DB, status: Optional[str] = None):
+@router.get("/tasks", response_model=list[TaskOut])
+async def list_tasks(website: OwnedWebsite, db: DB, status: str | None = None):
     stmt = select(Task).where(Task.website_id == website.id)
     if status:
         stmt = stmt.where(Task.status == status)
-    tasks = (await db.execute(stmt)).scalars().all()
+    tasks = list((await db.execute(stmt)).scalars().all())
     tasks.sort(key=lambda t: (t.status == "done", PRIORITY_ORDER.get(t.priority, 4), t.created_at))
     return tasks
 
@@ -45,7 +44,7 @@ async def update_task(task_id: int, payload: TaskUpdate, website: OwnedWebsite, 
     for k, v in data.items():
         setattr(task, k, v)
     if "status" in data:
-        task.completed_at = datetime.now(timezone.utc) if data["status"] == "done" else None
+        task.completed_at = datetime.now(UTC) if data["status"] == "done" else None
     await db.commit()
     await db.refresh(task)
     return task
@@ -58,7 +57,6 @@ async def delete_task(task_id: int, website: OwnedWebsite, db: DB):
         raise HTTPException(status_code=404, detail="Task not found")
     await db.delete(task)
     await db.commit()
-    return None
 
 
 @router.post("/plan", response_model=PlanResponse)
@@ -71,8 +69,9 @@ async def generate_action_plan(payload: PlanRequest, website: OwnedWebsite, db: 
         rows = (await db.execute(select(AuditIssue).where(AuditIssue.audit_id == latest.id))).scalars().all()
         issues = [{"code": i.code, "category": i.category, "severity": i.severity, "title": i.title,
                    "description": i.description, "recommendation": i.recommendation, "page_url": i.page_url, "impact": i.impact} for i in rows]
-        scores = {"seo": latest.seo_score, "technical": latest.technical_score, "content": latest.content_score,
-                  "aeo": latest.aeo_score, "ai": latest.ai_readiness_score, "performance": latest.performance_score, "social": latest.social_score}
+        raw_scores = {"seo": latest.seo_score, "technical": latest.technical_score, "content": latest.content_score,
+                      "aeo": latest.aeo_score, "ai": latest.ai_readiness_score, "performance": latest.performance_score, "social": latest.social_score}
+        scores = {k: v for k, v in raw_scores.items() if v is not None}
     keywords = [k.term for k in await load_keywords(db, website.id)]
     ctx = {"url": website.url, "name": website.name, "industry": website.industry,
            "target_location": website.target_location, "description": website.description}
@@ -83,8 +82,8 @@ async def generate_action_plan(payload: PlanRequest, website: OwnedWebsite, db: 
         select(Task).where(Task.website_id == website.id, Task.status.in_(["todo", "in_progress"]))
     )).scalars().all()}
     created = 0
-    weeks_out: List[PlanWeek] = []
-    now = datetime.now(timezone.utc)
+    weeks_out: list[PlanWeek] = []
+    now = datetime.now(UTC)
     for w in plan.get("weeks", []):
         week_no = int(w.get("week", len(weeks_out) + 1))
         due = now + timedelta(days=7 * week_no)
