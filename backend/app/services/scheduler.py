@@ -1,8 +1,10 @@
 """Background scheduler.
 
 Every tick it:
-  1. sends due report schedules (optionally running a fresh audit first),
-  2. runs automatic periodic audits for websites with auto_audit_enabled.
+  1. refreshes Google integrations that are due,
+  2. publishes scheduled social posts whose time has come,
+  3. sends due report schedules (optionally running a fresh audit first),
+  4. runs automatic periodic audits for websites with auto_audit_enabled.
 
 Schedules store `next_run_at` in UTC; `compute_next_run` converts from the schedule's
 local timezone so "Monday 09:00 Asia/Kolkata" means exactly that.
@@ -156,6 +158,17 @@ async def process_integration_syncs() -> int:
     return synced
 
 
+async def process_due_posts() -> int:
+    """Publish scheduled social posts whose time has come."""
+    from app.services.social.service import process_due_posts as _process
+
+    try:
+        return await _process(session_scope)
+    except Exception as exc:  # pragma: no cover
+        log.warning("social publishing tick failed: %s", exc)
+        return 0
+
+
 async def recover_stale_audits() -> None:
     """Audits left in queued/running after a restart are re-run (or failed if too old)."""
     async with session_scope() as db:
@@ -178,6 +191,7 @@ async def tick() -> None:
     async with _lock:
         try:
             await process_integration_syncs()
+            await process_due_posts()
             await process_due_reports()
             await process_auto_audits()
         except Exception:

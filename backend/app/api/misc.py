@@ -1,19 +1,16 @@
-"""Dashboard, social drafts, system status."""
+"""Dashboard + system status."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Dict
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter
 from sqlalchemy import func, select
 
 from app import __version__
-from app.api.deps import DB, CurrentUser, OwnedWebsite
+from app.api.deps import DB, CurrentUser
 from app.core.config import settings
 from app.models import Audit, AuditIssue, Keyword, ReportRun, ReportSchedule, Task, Website, Workspace
 from app.schemas.all import AuditSummaryOut, DashboardOut, ReportScheduleOut, SystemStatus
-from app.services.ai.insights import draft_social_posts
 
 router = APIRouter(prefix="/api", tags=["dashboard & system"])
 
@@ -22,7 +19,7 @@ router = APIRouter(prefix="/api", tags=["dashboard & system"])
 async def system_status():
     return SystemStatus(
         app_name=settings.app_name, environment=settings.environment, ai_provider=settings.resolved_ai_provider,
-        serp_provider=settings.resolved_serp_provider, email_backend=settings.resolved_email_backend,
+        serp_provider=settings.resolved_serp_provider, email_backend=settings.resolved_email_backend, image_provider=settings.resolved_image_provider,
         scheduler_enabled=settings.scheduler_enabled, version=__version__,
     )
 
@@ -64,18 +61,3 @@ async def dashboard(user: CurrentUser, db: DB):
         recent_audits=[AuditSummaryOut.model_validate(a) for a in recent],
         upcoming_reports=[ReportScheduleOut.model_validate(s) for s in upcoming], open_issue_counts=counts,
     )
-
-
-# --------------------------------------------------------------------------- #
-# Social drafts (AI copywriter) – publishing connectors come in phase 2
-# --------------------------------------------------------------------------- #
-class SocialDraftRequest(BaseModel):
-    topic: str = Field(min_length=3, max_length=300)
-    platforms: List[str] = Field(default_factory=lambda: ["instagram", "linkedin", "facebook"])
-    tone: str = "friendly"
-
-
-@router.post("/websites/{website_id}/social/draft")
-async def social_draft(payload: SocialDraftRequest, website: OwnedWebsite):
-    ctx = {"url": website.url, "name": website.name, "industry": website.industry, "target_location": website.target_location}
-    return await draft_social_posts(ctx, payload.topic, payload.platforms[:5], payload.tone)

@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
-from app.api import audits, auth, integrations, keywords, misc, reports, tasks, websites
+from app.api import audits, auth, creatives, integrations, keywords, misc, reports, social, tasks, websites
 from app.core.config import settings
 from app.core.database import init_db
 from app.services.scheduler import recover_stale_audits, start_scheduler, stop_scheduler
@@ -47,13 +47,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (auth.router, websites.router, audits.router, keywords.router, tasks.router, reports.router, integrations.router, misc.router):
+for r in (auth.router, websites.router, audits.router, keywords.router, tasks.router, reports.router, integrations.router, social.router, creatives.router, misc.router):
     app.include_router(r)
 
 
 @app.get("/api/health", tags=["system"])
 async def health():
     return {"status": "ok", "version": __version__}
+
+
+# Generated creatives / uploaded logos. Public by design: social networks fetch post images from here.
+_media = Path(settings.media_dir)
+_media.mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=_media), name="media")
 
 
 # Serve the built frontend (frontend/dist) when present – single-process production deploy.

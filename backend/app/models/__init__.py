@@ -2,6 +2,7 @@ from app.models.entities import (  # noqa: F401
     Audit,
     AuditIssue,
     AuditPage,
+    Creative,
     Integration,
     Keyword,
     KeywordRank,

@@ -99,6 +99,9 @@ class Website(TimestampMixin, Base):
 
     auto_audit_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # Brand kit used by the creative studio: {primary, secondary, text, logo_path, logo_text, style}
+    brand: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
     workspace: Mapped[Workspace] = relationship(back_populates="websites")
     audits: Mapped[List["Audit"]] = relationship(
         back_populates="website", cascade="all, delete-orphan", order_by="Audit.created_at.desc()"
@@ -110,6 +113,7 @@ class Website(TimestampMixin, Base):
     )
     integrations: Mapped[List["Integration"]] = relationship(back_populates="website", cascade="all, delete-orphan")
     social_posts: Mapped[List["SocialPost"]] = relationship(back_populates="website", cascade="all, delete-orphan")
+    creatives: Mapped[List["Creative"]] = relationship(back_populates="website", cascade="all, delete-orphan")
     leads: Mapped[List["Lead"]] = relationship(back_populates="website", cascade="all, delete-orphan")
 
 
@@ -328,21 +332,47 @@ class SearchQueryStat(Base):
 # --------------------------------------------------------------------------- #
 # Phase-2 tables (social publishing & lead finder) - schema ready, UI later
 # --------------------------------------------------------------------------- #
+class Creative(TimestampMixin, Base):
+    """A generated (template or AI) image stored under data/media/creatives."""
+
+    __tablename__ = "creatives"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    website_id: Mapped[int] = mapped_column(ForeignKey("websites.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16), default="template")  # template|ai|upload
+    template: Mapped[str] = mapped_column(String(32), default="")
+    size: Mapped[str] = mapped_column(String(16), default="square")  # square|landscape|story
+    width: Mapped[int] = mapped_column(Integer, default=1080)
+    height: Mapped[int] = mapped_column(Integer, default=1080)
+    path: Mapped[str] = mapped_column(String(512), default="")  # relative to the media root
+    spec: Mapped[dict] = mapped_column(JSON, default=dict)  # headline, subline, colours, prompt…
+
+    website: Mapped[Website] = relationship(back_populates="creatives")
+
+
 class SocialPost(TimestampMixin, Base):
     __tablename__ = "social_posts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     website_id: Mapped[int] = mapped_column(ForeignKey("websites.id", ondelete="CASCADE"), index=True)
-    platform: Mapped[str] = mapped_column(String(32))  # facebook|instagram|linkedin|x|gbp
+    platform: Mapped[str] = mapped_column(String(32))  # facebook|instagram|linkedin|x|webhook|google_business
+    topic: Mapped[str] = mapped_column(String(255), default="")
     content: Mapped[str] = mapped_column(Text, default="")
-    media_urls: Mapped[list] = mapped_column(JSON, default=list)
-    status: Mapped[str] = mapped_column(String(16), default="draft")  # draft|scheduled|published|failed
-    scheduled_for: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    hashtags: Mapped[list] = mapped_column(JSON, default=list)
+    link_url: Mapped[str] = mapped_column(String(2048), default="")
+    media_urls: Mapped[list] = mapped_column(JSON, default=list)  # external image URLs
+    creative_id: Mapped[Optional[int]] = mapped_column(ForeignKey("creatives.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="draft", index=True)  # draft|scheduled|publishing|published|failed
+    scheduled_for: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     external_id: Mapped[str] = mapped_column(String(255), default="")
+    external_url: Mapped[str] = mapped_column(String(2048), default="")
+    error: Mapped[str] = mapped_column(Text, default="")
     generated_by_ai: Mapped[bool] = mapped_column(Boolean, default=False)
+    campaign: Mapped[str] = mapped_column(String(64), default="")  # e.g. "autoplan-2026-09-04"
 
     website: Mapped[Website] = relationship(back_populates="social_posts")
+    creative: Mapped[Optional[Creative]] = relationship()
 
 
 class Lead(TimestampMixin, Base):

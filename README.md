@@ -7,7 +7,7 @@ and emails clients a branded **weekly / monthly report** on schedule — fully a
 > Business goal: make it easy for any website to grow online reach — especially Google ranking — from one
 > platform, with everything on automation.
 
-## What's in this milestone (v0.1 – foundation)
+## What's in this milestone (v0.2 – foundation + Google data + social autopilot)
 
 | Module | Status | Notes |
 | --- | --- | --- |
@@ -20,8 +20,10 @@ and emails clients a branded **weekly / monthly report** on schedule — fully a
 | Scheduled email reports (weekly / monthly, timezone aware) | ✅ | SMTP delivery; file outbox in dev |
 | Automatic re-audits | ✅ | Every 7 days per site (configurable) |
 | **Google Search Console + GA4 sync** | ✅ | Service-account JSON per site → clicks, impressions, CTR, positions, top queries/pages, page-1 opportunities, sessions, conversions, channels. Daily auto-sync + refresh before each report |
-| Integrations vault (GBP, FB, IG, LinkedIn, X) | 🟡 | Credentials stored, publishing in phase 2 |
-| Social publishing, lead finder | 🔜 | Data model ready (`social_posts`, `leads`), see [ROADMAP](docs/ROADMAP.md) |
+| **Social publishing** (Facebook Page, Instagram, LinkedIn Page, X, webhook) | ✅ | Connect channels per site, drafts → scheduled → auto-published by the scheduler at the planned time; publish-now, retry, bulk actions, calendar view |
+| **AI content planner** | ✅ | One click → multi-week, multi-platform calendar written from audit insights, tracked keywords and real Search Console queries; best-time scheduling in the site's timezone |
+| **Creative studio** | ✅ | Branded post graphics with **no API key** (6 Pillow templates × square/landscape/story, auto-detected brand colours + logo), AI images via `gpt-image-1` when `OPENAI_API_KEY` is set, uploads |
+| Lead finder | 🔜 | Data model ready (`leads`), see [ROADMAP](docs/ROADMAP.md) |
 
 ## Tech stack
 
@@ -46,7 +48,10 @@ Everything is optional. Without keys the platform still runs end-to-end using ru
 
 | Variable | Purpose |
 | --- | --- |
-| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | AI-written executive summaries, quick wins, plans, keyword ideas, social copy |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | AI-written executive summaries, quick wins, plans, keyword ideas, social calendars & captions |
+| `IMAGE_PROVIDER`, `OPENAI_IMAGE_MODEL` | AI-generated post images (`auto` → OpenAI when a key exists; template graphics always work) |
+| `PUBLIC_BASE_URL` | Public URL of this server – social networks fetch post images from `/media/...`, so it must be reachable from the internet in production |
+| `MEDIA_DIR` | Where generated creatives / uploads / logos are stored (default `backend/data/media`) |
 | `SERPAPI_KEY` | Live Google positions for tracked keywords |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Deliver scheduled reports to client inboxes (otherwise saved to `backend/data/outbox/`) |
 | `DATABASE_URL` | Default SQLite; use `postgresql+asyncpg://…` in production |
@@ -59,7 +64,7 @@ See [`backend/.env.example`](backend/.env.example) for the full list.
 ```
 backend/
   app/
-    api/            # FastAPI routers: auth, websites, audits, keywords, tasks/plan, reports, misc
+    api/            # FastAPI routers: auth, websites, audits, keywords, tasks/plan, reports, integrations, social, creatives, misc
     core/           # config, database, security, shared HTTP/TLS helpers
     models/         # SQLAlchemy models (users, workspaces, websites, audits, keywords, tasks, reports, integrations, social_posts, leads)
     schemas/        # Pydantic request/response models
@@ -67,9 +72,12 @@ backend/
       audit/        # crawler.py (async BFS crawler) · analyzers.py (rules + scoring) · engine.py (orchestration)
       ai/           # provider.py (OpenAI/Anthropic) · insights.py (summaries, keywords, plans, social drafts + fallbacks)
       reports/      # generator.py (HTML report) · mailer.py (smtp | file | console)
+      google/       # auth.py (service-account JWT) · search_console.py · analytics.py
+      social/       # publishers.py (FB/IG/LinkedIn/X/webhook) · planner.py (calendar) · service.py (publish + due-post worker)
+      creatives/    # renderer.py (Pillow templates) · studio.py (brand kit, AI images, uploads)
       rank_tracker.py, scheduler.py, verification.py
     templates/      # report_email.html
-  tests/            # pytest: analyzers, scheduler, full API flow (23 tests)
+  tests/            # pytest: analyzers, scheduler, API flow, Google integrations, social + creatives (41 tests)
 frontend/
   src/pages/        # Dashboard, connect website, website workspace (Overview · Issues & pages · Keywords · Plan · Content & social · Reports · Settings)
   src/lib/          # typed API client, auth context, helpers
@@ -118,7 +126,30 @@ managing many client sites. One-time setup (~2 minutes), guided inside the app (
 
 Keys are stored per website and never returned by the API (only the service-account email is shown).
 
+## Social publishing & creatives (per website)
+
+*Website → Content & social* has four areas:
+
+- **Planner & posts** – *Generate content plan* writes a 1–8 week calendar for the selected platforms (AI when a
+  key is configured, otherwise a solid rule-based rotation of tips / FAQs / proof / offers), renders a branded
+  graphic per post and drops everything in as drafts. Review, edit, then *Schedule* (single or bulk). The
+  scheduler publishes each post at its time; failures show the platform's error and can be retried.
+- **Creative studio** – brand kit (colours auto-detected from the site, logo upload), template graphics for
+  square / landscape / story, AI images, uploads. Every creative can be attached to a post.
+- **Channels** – connect once per site:
+
+  | Platform | What to paste | Notes |
+  | --- | --- | --- |
+  | Facebook Page | Page ID + Page access token (`pages_manage_posts`, `pages_read_engagement`) | Text, link and photo posts |
+  | Instagram Business | IG user ID + access token (`instagram_content_publish`) | Image required (fetched from `PUBLIC_BASE_URL/media/...`) |
+  | LinkedIn Page | Organization ID + token (`w_organization_social`) | Text / article / image posts |
+  | X | OAuth 2.0 user token (`tweet.write`) | Text posts (280 chars enforced) |
+  | Webhook | Any HTTPS URL (+ optional secret) | JSON payload, HMAC `X-RankPilot-Signature`; use with Zapier / Make / n8n / Buffer to reach any other network |
+
+  *Test connection* validates the token before anything is scheduled. Tokens are masked in every API response.
+- **Content ideas** – the audit's content ideas and keyword themes, which the planner reuses.
+
 ## Roadmap
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) — next: social publishing & creative generation, lead finder,
-PDF reports, white-label client portal.
+See [docs/ROADMAP.md](docs/ROADMAP.md) — next: lead finder, Google Business Profile posting, PDF reports,
+white-label client portal.

@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from app.api.deps import DB, OwnedWebsite
 from app.models import Integration, SearchQueryStat
+from app.models.entities import aware
 from app.schemas.all import IntegrationOut, IntegrationUpsert
 from app.services.google.analytics import sync_ga4
 from app.services.google.auth import GoogleAuthError
@@ -199,4 +200,4 @@ async def analytics(website: OwnedWebsite, db: DB):
     row = await _get(db, website.id, "ga4")
     if row is None:
         return {"connected": False}
-    return {"connected": row.status in ("connected", "error"), "synced_at": row.last_synced_at, "summary": row.summary or {}, "error": row.last_error or ""}
+    return {"connected": row.status in ("connected", "error"), "synced_at": aware(row.last_synced_at), "summary": row.summary or {}, "error": row.last_error or ""}

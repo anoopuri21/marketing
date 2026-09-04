@@ -16,6 +16,6 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 COPY backend/ ./backend/
 COPY --from=web /web/dist ./frontend/dist
 WORKDIR /app/backend
-RUN mkdir -p data/outbox
+RUN mkdir -p data/outbox data/media
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

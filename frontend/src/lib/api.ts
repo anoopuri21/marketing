@@ -35,7 +35,7 @@ export interface Workspace { id: number; name: string; created_at: string }
 export interface Website {
   id: number; workspace_id: number; url: string; domain: string; name: string; industry: string; target_location: string
   description: string; verified: boolean; verified_at: string | null; verification_method: string; verification_token: string
-  last_score: number | null; last_audit_at: string | null; auto_audit_enabled: boolean; created_at: string
+  last_score: number | null; last_audit_at: string | null; auto_audit_enabled: boolean; brand: Record<string, string> | null; created_at: string
 }
 export interface AuditSummary {
   id: number; website_id: number; status: 'queued' | 'running' | 'completed' | 'failed'; trigger: string; error: string
@@ -106,7 +106,7 @@ export interface AnalyticsData {
     countries?: { country: string; sessions: number }[]
     devices?: { device: string; sessions: number }[] }
 }
-export interface SystemStatus { app_name: string; environment: string; ai_provider: string; serp_provider: string; email_backend: string; scheduler_enabled: boolean; version: string }
+export interface SystemStatus { app_name: string; environment: string; ai_provider: string; serp_provider: string; email_backend: string; image_provider: string; scheduler_enabled: boolean; version: string }
 export interface Dashboard {
   websites: number; verified_websites: number; audits_completed: number; open_tasks: number; tracked_keywords: number
   avg_score: number | null; reports_sent: number; recent_audits: AuditSummary[]; upcoming_reports: ReportSchedule[]
@@ -197,7 +197,64 @@ export const Integrations = {
   analytics: (siteId: number) => api.get<AnalyticsData>(`/websites/${siteId}/analytics`).then((r) => r.data),
 }
 
+// ---------------------------------------------------------------- social publishing + creatives
+export type PostStatus = 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed'
+export interface SocialPost {
+  id: number; website_id: number; platform: string; topic: string; content: string; hashtags: string[]; link_url: string
+  media_urls: string[]; creative_id: number | null; creative_url: string; status: PostStatus; scheduled_for: string | null
+  published_at: string | null; external_id: string; external_url: string; error: string; generated_by_ai: boolean; campaign: string
+  created_at: string; updated_at: string
+}
+export interface PlatformMeta { label: string; status: 'live' | 'planned'; fields: string[]; optional_fields: string[]; max_chars: number; help: string }
+export interface Channel {
+  platform: string; label: string; status: string; config: Record<string, string>; connected_at: string | null; last_error: string
+  summary: { published?: number; last_post_at?: string }; last_used_at: string | null
+}
+export interface Creative {
+  id: number; kind: 'template' | 'ai' | 'upload'; template: string; size: string; width: number; height: number; url: string; public_url: string
+  spec: Record<string, unknown>; created_at: string
+}
+export interface CreativeSpec {
+  headline: string; subline?: string; cta?: string; template?: string; size?: string; primary?: string | null; secondary?: string | null
+  accent_words?: string[]; brand_name?: string | null; handle?: string | null
+}
+export interface Brand { primary: string; secondary: string; text: string; logo_path: string; style: string; name: string; handle: string; logo_url: string }
+export interface CalendarRequest {
+  platforms: string[]; weeks: number; posts_per_week: number; tone: string; goals: string; timezone: string; generate_creatives: boolean; auto_schedule: boolean
+}
+
 export const Social = {
+  platforms: () => api.get<Record<string, PlatformMeta>>('/social/platforms').then((r) => r.data),
+  channels: (siteId: number) => api.get<Channel[]>(`/websites/${siteId}/social/channels`).then((r) => r.data),
+  upsertChannel: (siteId: number, platform: string, config: Record<string, string>) =>
+    api.put<Channel>(`/websites/${siteId}/social/channels`, { platform, config }).then((r) => r.data),
+  removeChannel: (siteId: number, platform: string) => api.delete(`/websites/${siteId}/social/channels/${platform}`),
+  testChannel: (siteId: number, platform: string) => api.post<{ ok: boolean; detail: string }>(`/websites/${siteId}/social/channels/${platform}/test`).then((r) => r.data),
+  posts: (siteId: number, status?: string) => api.get<SocialPost[]>(`/websites/${siteId}/social/posts`, { params: status ? { status } : {} }).then((r) => r.data),
+  summary: (siteId: number) => api.get<{ counts: Record<string, number>; connected: string[]; next_scheduled_for: string | null; total: number }>(`/websites/${siteId}/social/summary`).then((r) => r.data),
+  createPost: (siteId: number, payload: Partial<SocialPost> & { platform: string; content: string }) => api.post<SocialPost>(`/websites/${siteId}/social/posts`, payload).then((r) => r.data),
+  updatePost: (siteId: number, id: number, payload: Partial<SocialPost>) => api.patch<SocialPost>(`/websites/${siteId}/social/posts/${id}`, payload).then((r) => r.data),
+  deletePost: (siteId: number, id: number) => api.delete(`/websites/${siteId}/social/posts/${id}`),
+  publishNow: (siteId: number, id: number) => api.post<SocialPost>(`/websites/${siteId}/social/posts/${id}/publish`).then((r) => r.data),
+  previewText: (siteId: number, id: number) => api.get<{ text: string; max_chars: number | null }>(`/websites/${siteId}/social/posts/${id}/preview`).then((r) => r.data),
+  bulk: (siteId: number, ids: number[], action: 'schedule' | 'draft' | 'delete') => api.post<{ updated: number }>(`/websites/${siteId}/social/posts/bulk`, ids, { params: { action } }).then((r) => r.data),
   draft: (siteId: number, topic: string, platforms: string[], tone: string) =>
     api.post<{ provider: string; posts: { platform: string; content: string; hashtags?: string[]; image_idea?: string }[] }>(`/websites/${siteId}/social/draft`, { topic, platforms, tone }).then((r) => r.data),
+  calendar: (siteId: number, payload: CalendarRequest) =>
+    api.post<{ provider: string; strategy: string; campaign: string; created: number; posts: SocialPost[] }>(`/websites/${siteId}/social/calendar`, payload).then((r) => r.data),
+}
+
+export const Creatives = {
+  templates: (siteId: number) => api.get<{ templates: { id: string; label: string; description: string }[]; sizes: string[]; ai_images: boolean; image_provider: string }>(`/websites/${siteId}/creatives/templates`).then((r) => r.data),
+  brand: (siteId: number) => api.get<Brand>(`/websites/${siteId}/creatives/brand`).then((r) => r.data),
+  updateBrand: (siteId: number, payload: Partial<Pick<Brand, 'primary' | 'secondary' | 'text' | 'style'>>) => api.put<Brand>(`/websites/${siteId}/creatives/brand`, payload).then((r) => r.data),
+  detectBrand: (siteId: number) => api.post<{ detected: boolean; brand: Brand; colours?: Record<string, string> }>(`/websites/${siteId}/creatives/brand/detect`).then((r) => r.data),
+  uploadLogo: (siteId: number, file: File) => { const fd = new FormData(); fd.append('file', file); return api.post<{ logo_url: string }>(`/websites/${siteId}/creatives/brand/logo`, fd).then((r) => r.data) },
+  removeLogo: (siteId: number) => api.delete(`/websites/${siteId}/creatives/brand/logo`),
+  list: (siteId: number) => api.get<Creative[]>(`/websites/${siteId}/creatives`).then((r) => r.data),
+  previewBlob: (siteId: number, spec: CreativeSpec) => api.post<Blob>(`/websites/${siteId}/creatives/preview`, spec, { responseType: 'blob' }).then((r) => r.data),
+  create: (siteId: number, spec: CreativeSpec) => api.post<Creative>(`/websites/${siteId}/creatives`, spec).then((r) => r.data),
+  createAI: (siteId: number, prompt: string, size: string) => api.post<Creative>(`/websites/${siteId}/creatives/ai`, { prompt, size }).then((r) => r.data),
+  upload: (siteId: number, file: File) => { const fd = new FormData(); fd.append('file', file); return api.post<Creative>(`/websites/${siteId}/creatives/upload`, fd).then((r) => r.data) },
+  remove: (siteId: number, id: number) => api.delete(`/websites/${siteId}/creatives/${id}`),
 }

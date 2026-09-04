@@ -16,6 +16,8 @@ from app.services.google import auth as auth_mod
 from app.services.google import search_console as gsc_mod
 from tests.test_api import fake_crawl_site
 
+ORIGINAL_ASYNC_CLIENT = httpx.AsyncClient  # captured at import time, before any module patches it
+
 
 def _service_account() -> str:
     from cryptography.hazmat.primitives import serialization
@@ -112,7 +114,7 @@ def client(module_mocker=None) -> Iterator[TestClient]:
     engine_mod.crawl_site = fake_crawl_site  # type: ignore[assignment]
     transport = httpx.MockTransport(_handler)
 
-    class PatchedAsyncClient(httpx.AsyncClient):
+    class PatchedAsyncClient(ORIGINAL_ASYNC_CLIENT):
         def __init__(self, *args, **kwargs):
             kwargs.pop("verify", None)
             kwargs["transport"] = transport
@@ -127,7 +129,7 @@ def client(module_mocker=None) -> Iterator[TestClient]:
             yield c
     finally:
         for mod in (auth_mod, gsc_mod, ga4_mod):
-            mod.httpx.AsyncClient = httpx.AsyncClient  # type: ignore[attr-defined]
+            mod.httpx.AsyncClient = ORIGINAL_ASYNC_CLIENT  # type: ignore[attr-defined]
         auth_mod.clear_token_cache()
 
 

@@ -88,6 +88,7 @@ class WebsiteUpdate(BaseModel):
     target_location: Optional[str] = None
     description: Optional[str] = None
     auto_audit_enabled: Optional[bool] = None
+    brand: Optional[Dict[str, Any]] = None
 
 
 class WebsiteOut(ORMModel):
@@ -106,6 +107,7 @@ class WebsiteOut(ORMModel):
     last_score: Optional[float]
     last_audit_at: Optional[datetime]
     auto_audit_enabled: bool
+    brand: Optional[Dict[str, Any]] = None
     created_at: datetime
 
 
@@ -383,6 +385,7 @@ class SystemStatus(BaseModel):
     ai_provider: str
     serp_provider: str
     email_backend: str
+    image_provider: str = "none"
     scheduler_enabled: bool
     version: str
 

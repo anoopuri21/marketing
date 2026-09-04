@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True  # STARTTLS
     smtp_use_ssl: bool = False  # implicit TLS (port 465)
     outbox_dir: str = str(BASE_DIR / "data" / "outbox")
+    media_dir: str = str(BASE_DIR / "data" / "media")  # generated creatives + uploads (served at /media)
+
+    # --- Image generation (creative studio) ------------------------------
+    image_provider: Literal["auto", "openai", "none"] = "auto"  # template renderer always works without a key
+    openai_image_model: str = "gpt-image-1"
 
     # --- Scheduler -------------------------------------------------------
     scheduler_enabled: bool = True
@@ -69,6 +74,12 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()] or ["*"]
 
     # Convenience -----------------------------------------------------------
+    @property
+    def resolved_image_provider(self) -> str:
+        if self.image_provider == "auto":
+            return "openai" if self.openai_api_key else "none"
+        return self.image_provider
+
     @property
     def resolved_ai_provider(self) -> str:
         if self.ai_provider == "auto":
