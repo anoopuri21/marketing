@@ -8,6 +8,7 @@ import DashboardPage from './pages/DashboardPage'
 import NewWebsitePage from './pages/NewWebsitePage'
 import SettingsPage from './pages/SettingsPage'
 import ContentTab from './pages/website/ContentTab'
+import LeadsTab from './pages/website/LeadsTab'
 import IssuesTab from './pages/website/IssuesTab'
 import KeywordsTab from './pages/website/KeywordsTab'
 import GoogleTab from './pages/website/GoogleTab'
@@ -51,6 +52,7 @@ export default function App() {
                     <Route path="google" element={<GoogleTab />} />
                     <Route path="plan" element={<PlanTab />} />
                     <Route path="content" element={<ContentTab />} />
+                    <Route path="leads" element={<LeadsTab />} />
                     <Route path="reports" element={<ReportsTab />} />
                     <Route path="settings" element={<SettingsTab />} />
                   </Route>

@@ -32,6 +32,7 @@
 - **Due social posts** — `social_posts` with `status=scheduled` and `scheduled_for <= now` (max 10 per tick) are flipped to `publishing` (so a second instance skips them), sent through `services/social/publishers.publish()` for their platform and end as `published` (with `external_id`/`external_url`) or `failed` (with the platform's error, retry from the UI). Posts whose channel was disconnected fail fast.
 - **Reports** — `ReportSchedule.next_run_at <= now` → refresh Google integrations → optional fresh audit → render `report_email.html` → deliver via mailer backend → record `ReportRun` → compute the next run in the schedule's timezone.
 - **Auto audits** — websites whose `last_audit_at` is older than `AUTO_AUDIT_INTERVAL_DAYS` (max 5 per tick).
+- **Lead qualification** — `leads` without `qualified_at` (and no previous error) get a mini audit + pitch, `LEAD_QUALIFY_PER_TICK` per tick. The API also queues freshly discovered / imported leads as FastAPI background tasks so scores appear within seconds; the tick is the safety net.
 - On startup, stale `queued/running` audits are re-run (or failed if older than 2h).
 
 For multi-instance deployments run the scheduler on a single instance (`SCHEDULER_ENABLED=false` elsewhere) or move the tick to a worker.
@@ -42,6 +43,13 @@ For multi-instance deployments run the scheduler on a single instance (`SCHEDULE
 - **Publishers** (`services/social/publishers.py`) are thin REST clients (Graph API v20, LinkedIn `rest/posts`, X v2, signed webhook) sharing `compose_text()` (content + hashtags + link, per-platform limits). Images are passed by URL, so `PUBLIC_BASE_URL` must be reachable by the networks in production.
 - **Planner** (`services/social/planner.py`) builds `{strategy, posts[]}` from website context (industry, location, keyword themes, GSC queries, audit content ideas) — via the LLM when configured, otherwise a deterministic rotation of 10 post types — and `schedule_times()` maps each post to a best-practice local slot starting tomorrow.
 - **Creatives** (`services/creatives/`) — `renderer.py` draws 6 template families with Pillow (word-wrapped, auto-fitted text; brand colours; optional logo) in square / landscape / story sizes; `studio.py` persists `Creative` rows and files under `MEDIA_DIR/creatives/<website_id>/`, handles uploads/logos and OpenAI image generation. Files are served at `/media/...` by the API (`main.py`).
+
+## Lead finder
+
+- **Sources** (`services/leads/sources.py`) — `discover(query, location, mode)` fans out to SerpAPI `google_maps` (local businesses, paginated) and/or `google` organic results (companies ranking for the service), filters directories / social networks (`EXCLUDED_HOSTS`) and collapses duplicate hosts. `LEAD_PROVIDER=demo` (default without a key) returns deterministic sample prospects on RFC 2606 `example.*` domains, which the qualifier recognises and scores with a deterministic pseudo-audit instead of crawling.
+- **Qualifier** (`services/leads/qualifier.py`) — re-uses `crawl_site` + `analyze` with a 3-page budget, maps audit facts/issues onto a **gap catalogue** (label, what to pitch, weight) and computes the opportunity score: `0.5 × (100 − website_score)` + gap weights (capped) + listing signals; no website / unreachable site ⇒ top of the list.
+- **Pitch** (`services/leads/pitch.py`) — `write_pitch()` builds the angle from the top gaps, then asks the LLM for JSON (email, WhatsApp, follow-ups) or falls back to the rule-based writer. Regenerable per tone.
+- **Service / API** (`services/leads/service.py`, `api/leads.py`) — dedupe keys (place_id, host, company+location), campaign id per search (`find-YYYYMMDD-HHMMSS`), status transitions with an activity timeline, follow-up scheduling (first follow-up day comes from the pitch cadence), bulk actions, CSV import/export. Everything is scoped to the owning workspace via `OwnedWebsite`.
 
 ## Extending
 
@@ -55,6 +63,8 @@ For multi-instance deployments run the scheduler on a single instance (`SCHEDULE
 | Change the email | `templates/report_email.html` (inline-CSS, email-client safe) |
 | Add a social network | `services/social/publishers.py` — add a `publish_<name>()` + `PLATFORMS` entry (fields, limits, best times); the UI channel form is generated from `GET /api/social/platforms` |
 | Add a creative template | `services/creatives/renderer.py` — add `_<name>(spec, size)` and register it in `TEMPLATES`; it appears in the studio automatically |
+| Add a lead source | `services/leads/sources.py` — return `Prospect` dicts from a new `async def <name>_search()` and branch in `discover()`; add the provider name to `Settings.lead_provider` |
+| Add a sellable gap | `services/leads/qualifier.py` — add to `GAP_CATALOGUE` (+ map the analyzer issue code in `ISSUE_TO_GAP` or detect it from facts in `gaps_from_analysis`) |
 
 ## Security notes
 

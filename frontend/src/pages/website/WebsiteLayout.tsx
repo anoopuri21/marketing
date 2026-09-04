@@ -20,6 +20,7 @@ const tabs = [
   { to: 'google', label: 'Google data' },
   { to: 'plan', label: 'Plan & tasks' },
   { to: 'content', label: 'Content & social' },
+  { to: 'leads', label: 'Leads' },
   { to: 'reports', label: 'Reports' },
   { to: 'settings', label: 'Settings' },
 ]

@@ -38,7 +38,10 @@ for (const route of routes) {
   console.log(`\n=== ${route} (${errors.length} errors)\n${text.slice(0, 6000)}`)
   for (const e of errors.slice(0, 3)) console.log('  ! ' + e)
   for (const label of clicks) {
-    const btn = [...dom.window.document.querySelectorAll('button')].find((b) => b.textContent.replace(/\s+/g, ' ').trim().startsWith(label))
+    const sel = label.startsWith('*') ? 'tr,button,a,div[draggable]' : 'button'
+    const needle = label.replace(/^\*/, '')
+    const els = [...dom.window.document.querySelectorAll(sel)].map((b) => [b, b.textContent.replace(/\s+/g, ' ').trim()])
+    const btn = (els.find(([, t]) => t === needle) || els.find(([, t]) => t.startsWith(needle)) || [])[0]
     if (!btn) { console.log(`\n--- click "${label}": NOT FOUND`); continue }
     btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }))
     await new Promise((r) => setTimeout(r, 2000))

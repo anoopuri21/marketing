@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     serp_provider: Literal["auto", "serpapi", "none"] = "auto"
     serpapi_key: str = ""
 
+    # --- Lead finder -----------------------------------------------------
+    # auto = serpapi when SERPAPI_KEY is set, otherwise "demo" (clearly-labelled sample prospects so the flow can be tried)
+    lead_provider: Literal["auto", "serpapi", "demo", "none"] = "auto"
+    lead_qualify_max_pages: int = 3  # pages crawled per prospect for the mini audit
+    lead_qualify_per_tick: int = 3  # background qualifications per scheduler tick
+
     # --- Email -----------------------------------------------------------
     email_backend: Literal["auto", "smtp", "file", "console"] = "auto"
     smtp_host: str = ""
@@ -89,6 +95,12 @@ class Settings(BaseSettings):
                 return "anthropic"
             return "none"
         return self.ai_provider
+
+    @property
+    def resolved_lead_provider(self) -> str:
+        if self.lead_provider == "auto":
+            return "serpapi" if self.serpapi_key else "demo"
+        return self.lead_provider
 
     @property
     def resolved_serp_provider(self) -> str:

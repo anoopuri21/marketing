@@ -19,11 +19,13 @@ AI search, social, digital marketing, lead generation) on automation, with sched
 - **AI content planner**: multi-week calendars per platform from audit insights + tracked keywords + Search Console queries (AI or rule-based), best-time scheduling in the site's timezone, one branded graphic per post
 - **Creative studio**: brand kit (auto-detected colours, logo), 6 template families × 3 sizes rendered with Pillow (no key needed), AI images (`gpt-image-1`) when configured, uploads; `/media` served by the API
 
+- **Lead finder**: prospect discovery (SerpAPI Google Maps + Search, directory filtering, dedupe, demo mode), background mini audits of prospect websites → sellable gaps + opportunity score, AI / rule-based personalised pitches (email, WhatsApp, follow-ups), pipeline board with follow-up reminders, CSV import/export
+
 ## 🔜 Phase 2 — Data & distribution
 
 1. ~~Google Search Console + GA4 sync~~ ✅ shipped (see above). Follow-ups: OAuth "Sign in with Google" flow as an alternative to service accounts, GSC URL-inspection (index status) per page, Bing Webmaster Tools.
 2. ~~Social publishing + creative generation~~ ✅ shipped (see above). Follow-ups: Google Business Profile posts (API access is invite-only), OAuth connect buttons instead of pasting tokens, long-lived token refresh, carousel / video posts, engagement metrics pulled back into reports, comment inbox.
-3. **Lead finder**: discover prospects (Google Places / directories / LinkedIn-style sources) by industry + location, score them, outreach templates, pipeline stages (`leads` table already exists).
+3. ~~Lead finder~~ ✅ shipped (see above). Follow-ups: Google Places API as a second provider, email enrichment (find decision-maker emails), send outreach directly via SMTP with tracking + automatic follow-up sends, LinkedIn company lookup, lead-to-client conversion (one click "connect this website").
 4. **PDF reports + white-label**: agency logo/colours, custom sender domain, client portal (read-only login per client).
 5. **Backlink & competitor module**: competitor audit side-by-side, keyword gap, backlink provider integration.
 

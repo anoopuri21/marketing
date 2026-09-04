@@ -23,7 +23,7 @@ and emails clients a branded **weekly / monthly report** on schedule — fully a
 | **Social publishing** (Facebook Page, Instagram, LinkedIn Page, X, webhook) | ✅ | Connect channels per site, drafts → scheduled → auto-published by the scheduler at the planned time; publish-now, retry, bulk actions, calendar view |
 | **AI content planner** | ✅ | One click → multi-week, multi-platform calendar written from audit insights, tracked keywords and real Search Console queries; best-time scheduling in the site's timezone |
 | **Creative studio** | ✅ | Branded post graphics with **no API key** (6 Pillow templates × square/landscape/story, auto-detected brand colours + logo), AI images via `gpt-image-1` when `OPENAI_API_KEY` is set, uploads |
-| Lead finder | 🔜 | Data model ready (`leads`), see [ROADMAP](docs/ROADMAP.md) |
+| **Lead finder** | ✅ | Service + city → real businesses (Google Maps / Search via SerpAPI, demo mode without a key) → **mini SEO audit of each prospect's site** → opportunity score → **personalised email / WhatsApp pitch + follow-ups** → pipeline board (new → contacted → replied → qualified → won/lost), follow-up reminders, CSV import/export |
 
 ## Tech stack
 
@@ -52,7 +52,8 @@ Everything is optional. Without keys the platform still runs end-to-end using ru
 | `IMAGE_PROVIDER`, `OPENAI_IMAGE_MODEL` | AI-generated post images (`auto` → OpenAI when a key exists; template graphics always work) |
 | `PUBLIC_BASE_URL` | Public URL of this server – social networks fetch post images from `/media/...`, so it must be reachable from the internet in production |
 | `MEDIA_DIR` | Where generated creatives / uploads / logos are stored (default `backend/data/media`) |
-| `SERPAPI_KEY` | Live Google positions for tracked keywords |
+| `SERPAPI_KEY` | Live Google positions for tracked keywords **and** real prospect discovery in the lead finder (Google Maps + Search) |
+| `LEAD_PROVIDER`, `LEAD_QUALIFY_MAX_PAGES` | Lead finder source (`auto` → SerpAPI when the key exists, else demo) and mini-audit depth |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Deliver scheduled reports to client inboxes (otherwise saved to `backend/data/outbox/`) |
 | `DATABASE_URL` | Default SQLite; use `postgresql+asyncpg://…` in production |
 | `CRAWL_MAX_PAGES`, `AUTO_AUDIT_INTERVAL_DAYS`, `SCHEDULER_TICK_SECONDS` | Crawl depth and automation cadence |
@@ -64,7 +65,7 @@ See [`backend/.env.example`](backend/.env.example) for the full list.
 ```
 backend/
   app/
-    api/            # FastAPI routers: auth, websites, audits, keywords, tasks/plan, reports, integrations, social, creatives, misc
+    api/            # FastAPI routers: auth, websites, audits, keywords, tasks/plan, reports, integrations, social, creatives, leads, misc
     core/           # config, database, security, shared HTTP/TLS helpers
     models/         # SQLAlchemy models (users, workspaces, websites, audits, keywords, tasks, reports, integrations, social_posts, leads)
     schemas/        # Pydantic request/response models
@@ -75,11 +76,12 @@ backend/
       google/       # auth.py (service-account JWT) · search_console.py · analytics.py
       social/       # publishers.py (FB/IG/LinkedIn/X/webhook) · planner.py (calendar) · service.py (publish + due-post worker)
       creatives/    # renderer.py (Pillow templates) · studio.py (brand kit, AI images, uploads)
+      leads/        # sources.py (SerpAPI Maps/Search + demo) · qualifier.py (mini audit → gaps → score) · pitch.py · service.py (pipeline + background worker)
       rank_tracker.py, scheduler.py, verification.py
     templates/      # report_email.html
-  tests/            # pytest: analyzers, scheduler, API flow, Google integrations, social + creatives (41 tests)
+  tests/            # pytest: analyzers, scheduler, API flow, Google integrations, social + creatives, leads (51 tests)
 frontend/
-  src/pages/        # Dashboard, connect website, website workspace (Overview · Issues & pages · Keywords · Plan · Content & social · Reports · Settings)
+  src/pages/        # Dashboard, connect website, website workspace (Overview · Issues & pages · Keywords · Google data · Plan · Content & social · Leads · Reports · Settings)
   src/lib/          # typed API client, auth context, helpers
 scripts/            # setup.sh · dev.sh · seed_demo.sh
 docs/               # ROADMAP.md · ARCHITECTURE.md
@@ -149,7 +151,27 @@ Keys are stored per website and never returned by the API (only the service-acco
   *Test connection* validates the token before anything is scheduled. Tokens are masked in every API response.
 - **Content ideas** – the audit's content ideas and keyword themes, which the planner reuses.
 
+## Lead finder (per website)
+
+*Website → Leads* turns the platform into a client-acquisition engine for agencies and service businesses:
+
+1. **Find prospects** – type a service + location (“dentist”, “Delhi”). With `SERPAPI_KEY` set, RankPilot pulls real
+   businesses from Google Maps (name, phone, address, rating, reviews, website) and/or companies ranking in Google
+   Search, skipping directories (Justdial, Yelp, Wikipedia…) and your own domain. Duplicates across searches are
+   merged. Without a key you get clearly-labelled demo prospects so the flow can be tried end-to-end.
+2. **Qualify automatically** – every prospect's website gets a mini audit (3 pages, same engine as the main audit):
+   health score, and a ranked list of *gaps you can sell against* (no HTTPS, no schema, slow, no FAQ, no contact
+   info, thin content, not mobile friendly, AI crawlers blocked…). Prospects with no website or a dead site rank
+   highest. The **opportunity score (0–100)** blends website weakness, gap weight and listing signals (phone,
+   reviews, rating). Qualification runs in the background (API background task + scheduler tick).
+3. **Pitch** – each lead gets a personalised angle, an email, a WhatsApp/DM message and two follow-ups, written by
+   the LLM when configured or by the rule-based writer (still personalised on the real gaps). One-click copy,
+   *Open in mail*, *Open WhatsApp*, rewrite in another tone.
+4. **Pipeline** – list or Kanban board (drag & drop): new → contacted → replied → qualified → won / lost. Marking a
+   lead *contacted* schedules the first follow-up from the pitch cadence; the *Follow-up due* filter and dashboard
+   stat keep outreach on track. Notes and a full activity timeline per lead; CSV import (any column order) and export.
+
 ## Roadmap
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) — next: lead finder, Google Business Profile posting, PDF reports,
-white-label client portal.
+See [docs/ROADMAP.md](docs/ROADMAP.md) — next: Google Business Profile posting, PDF / white-label reports,
+client portal, competitor & backlink module.

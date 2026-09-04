@@ -376,6 +376,8 @@ class SocialPost(TimestampMixin, Base):
 
 
 class Lead(TimestampMixin, Base):
+    """A prospect discovered for (or added to) a website's pipeline."""
+
     __tablename__ = "leads"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -385,9 +387,32 @@ class Lead(TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(255), default="")
     phone: Mapped[str] = mapped_column(String(64), default="")
     website_url: Mapped[str] = mapped_column(String(2048), default="")
-    source: Mapped[str] = mapped_column(String(64), default="manual")
-    score: Mapped[int] = mapped_column(Integer, default=0)
-    status: Mapped[str] = mapped_column(String(16), default="new")  # new|contacted|qualified|won|lost
+    source: Mapped[str] = mapped_column(String(64), default="manual")  # manual|serpapi_maps|serpapi_organic|demo|csv
+    score: Mapped[int] = mapped_column(Integer, default=0)  # 0-100 opportunity score
+    status: Mapped[str] = mapped_column(String(16), default="new", index=True)  # new|contacted|replied|qualified|won|lost
     notes: Mapped[str] = mapped_column(Text, default="")
+
+    # discovery context
+    category: Mapped[str] = mapped_column(String(255), default="")  # e.g. "Dentist"
+    location: Mapped[str] = mapped_column(String(255), default="")
+    address: Mapped[str] = mapped_column(String(512), default="")
+    rating: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    reviews: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    place_id: Mapped[str] = mapped_column(String(255), default="", index=True)
+    search_query: Mapped[str] = mapped_column(String(255), default="")
+    campaign: Mapped[str] = mapped_column(String(64), default="", index=True)  # search batch id
+    tags: Mapped[list] = mapped_column(JSON, default=list)
+
+    # qualification (mini audit of the lead's website)
+    qualified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    website_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    audit: Mapped[dict] = mapped_column(JSON, default=dict)  # scores, gaps, facts
+    pitch: Mapped[dict] = mapped_column(JSON, default=dict)  # angle, email, whatsapp, follow_ups, provider
+    qualify_error: Mapped[str] = mapped_column(Text, default="")
+
+    # pipeline
+    last_contacted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_follow_up_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    activity: Mapped[list] = mapped_column(JSON, default=list)  # [{at, kind, note}]
 
     website: Mapped[Website] = relationship(back_populates="leads")

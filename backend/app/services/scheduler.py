@@ -169,6 +169,17 @@ async def process_due_posts() -> int:
         return 0
 
 
+async def process_lead_qualification() -> int:
+    """Mini-audit + pitch for newly discovered leads (a few per tick so crawls never block the loop)."""
+    from app.services.leads.service import process_lead_qualification as _process
+
+    try:
+        return await _process(session_scope)
+    except Exception as exc:  # pragma: no cover
+        log.warning("lead qualification tick failed: %s", exc)
+        return 0
+
+
 async def recover_stale_audits() -> None:
     """Audits left in queued/running after a restart are re-run (or failed if too old)."""
     async with session_scope() as db:
@@ -194,6 +205,7 @@ async def tick() -> None:
             await process_due_posts()
             await process_due_reports()
             await process_auto_audits()
+            await process_lead_qualification()
         except Exception:
             log.exception("scheduler tick failed")
 

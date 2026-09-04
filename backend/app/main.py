@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
-from app.api import audits, auth, creatives, integrations, keywords, misc, reports, social, tasks, websites
+from app.api import audits, auth, creatives, integrations, keywords, leads, misc, reports, social, tasks, websites
 from app.core.config import settings
 from app.core.database import init_db
 from app.services.scheduler import recover_stale_audits, start_scheduler, stop_scheduler
@@ -47,7 +47,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (auth.router, websites.router, audits.router, keywords.router, tasks.router, reports.router, integrations.router, social.router, creatives.router, misc.router):
+for r in (auth.router, websites.router, audits.router, keywords.router, tasks.router, reports.router, integrations.router, social.router, creatives.router, leads.router, misc.router):
     app.include_router(r)
 
 

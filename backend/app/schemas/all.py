@@ -386,6 +386,7 @@ class SystemStatus(BaseModel):
     serp_provider: str
     email_backend: str
     image_provider: str = "none"
+    lead_provider: str = "demo"
     scheduler_enabled: bool
     version: str
 
@@ -398,6 +399,10 @@ class DashboardOut(BaseModel):
     tracked_keywords: int
     avg_score: Optional[float]
     reports_sent: int
+    leads_total: int = 0
+    leads_active: int = 0  # contacted + replied + qualified
+    leads_won: int = 0
+    follow_ups_due: int = 0
     recent_audits: List[AuditSummaryOut]
     upcoming_reports: List[ReportScheduleOut]
     open_issue_counts: Dict[str, int]

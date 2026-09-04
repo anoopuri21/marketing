@@ -106,11 +106,12 @@ export interface AnalyticsData {
     countries?: { country: string; sessions: number }[]
     devices?: { device: string; sessions: number }[] }
 }
-export interface SystemStatus { app_name: string; environment: string; ai_provider: string; serp_provider: string; email_backend: string; image_provider: string; scheduler_enabled: boolean; version: string }
+export interface SystemStatus { app_name: string; environment: string; ai_provider: string; serp_provider: string; email_backend: string; image_provider: string; lead_provider: string; scheduler_enabled: boolean; version: string }
 export interface Dashboard {
   websites: number; verified_websites: number; audits_completed: number; open_tasks: number; tracked_keywords: number
   avg_score: number | null; reports_sent: number; recent_audits: AuditSummary[]; upcoming_reports: ReportSchedule[]
   open_issue_counts: Record<string, number>
+  leads_total: number; leads_active: number; leads_won: number; follow_ups_due: number
 }
 export interface PlanResponse {
   provider: string; strategy_summary: string; created_tasks: number
@@ -257,4 +258,48 @@ export const Creatives = {
   createAI: (siteId: number, prompt: string, size: string) => api.post<Creative>(`/websites/${siteId}/creatives/ai`, { prompt, size }).then((r) => r.data),
   upload: (siteId: number, file: File) => { const fd = new FormData(); fd.append('file', file); return api.post<Creative>(`/websites/${siteId}/creatives/upload`, fd).then((r) => r.data) },
   remove: (siteId: number, id: number) => api.delete(`/websites/${siteId}/creatives/${id}`),
+}
+
+// ---------------------------------------------------------------- leads
+export type LeadStatus = 'new' | 'contacted' | 'replied' | 'qualified' | 'won' | 'lost'
+export interface LeadGap { code: string; label: string; pitch: string; weight: number; detail: string }
+export interface LeadPitch {
+  provider?: string; angle?: string; hook?: string; offer?: string
+  email?: { subject: string; body: string }; whatsapp?: string
+  follow_ups?: { day: number; channel: string; subject: string; body: string }[]
+}
+export interface Lead {
+  id: number; website_id: number; company: string; contact_name: string; email: string; phone: string; website_url: string
+  source: string; score: number; status: LeadStatus; notes: string; category: string; location: string; address: string
+  rating: number | null; reviews: number | null; place_id: string; search_query: string; campaign: string; tags: string[]
+  qualified_at: string | null; website_score: number | null
+  audit: { website_score?: number | null; scores?: Record<string, number>; gaps?: LeadGap[]; pages_crawled?: number; facts?: Record<string, unknown>; unreachable?: boolean; demo?: boolean }
+  pitch: LeadPitch; qualify_error: string
+  last_contacted_at: string | null; next_follow_up_at: string | null
+  activity: { at: string; kind: string; note: string }[]
+  created_at: string; updated_at: string | null
+}
+export interface LeadSummary { counts: Record<LeadStatus, number>; total: number; pending_qualification: number; follow_ups_due: number; avg_score: number | null; provider: string }
+export interface DiscoverResult { provider: string; note: string; found: number; created: number; skipped: number; campaign: string; leads: Lead[] }
+
+export const Leads = {
+  summary: (siteId: number) => api.get<LeadSummary>(`/websites/${siteId}/leads/summary`).then((r) => r.data),
+  list: (siteId: number, params: { status?: string; campaign?: string; q?: string; min_score?: number; sort?: 'score' | 'created' | 'company' | 'follow_up' } = {}) =>
+    api.get<Lead[]>(`/websites/${siteId}/leads`, { params }).then((r) => r.data),
+  campaigns: (siteId: number) => api.get<{ campaign: string; query: string; location: string; source: string }[]>(`/websites/${siteId}/leads/campaigns`).then((r) => r.data),
+  discover: (siteId: number, payload: { query: string; location: string; mode: 'maps' | 'organic' | 'both'; limit: number; qualify: boolean }) =>
+    api.post<DiscoverResult>(`/websites/${siteId}/leads/discover`, payload).then((r) => r.data),
+  create: (siteId: number, payload: Partial<Lead> & { company: string }) => api.post<Lead>(`/websites/${siteId}/leads`, payload).then((r) => r.data),
+  get: (siteId: number, id: number) => api.get<Lead>(`/websites/${siteId}/leads/${id}`).then((r) => r.data),
+  update: (siteId: number, id: number, payload: Partial<Lead> & { activity_note?: string }) => api.patch<Lead>(`/websites/${siteId}/leads/${id}`, payload).then((r) => r.data),
+  setStatus: (siteId: number, id: number, status: LeadStatus, note = '', schedule_follow_up_days?: number) =>
+    api.post<Lead>(`/websites/${siteId}/leads/${id}/status`, { status, note, schedule_follow_up_days }).then((r) => r.data),
+  qualify: (siteId: number, id: number) => api.post<Lead>(`/websites/${siteId}/leads/${id}/qualify`).then((r) => r.data),
+  pitch: (siteId: number, id: number, tone: string) => api.post<Lead>(`/websites/${siteId}/leads/${id}/pitch`, { tone }).then((r) => r.data),
+  remove: (siteId: number, id: number) => api.delete(`/websites/${siteId}/leads/${id}`),
+  bulk: (siteId: number, ids: number[], action: 'qualify' | 'delete' | 'status', status?: LeadStatus) =>
+    api.post<{ updated: number; queued?: boolean }>(`/websites/${siteId}/leads/bulk`, { ids, action, status }).then((r) => r.data),
+  importCsv: (siteId: number, file: File) => { const fd = new FormData(); fd.append('file', file); return api.post<{ created: number; skipped: number; leads: Lead[] }>(`/websites/${siteId}/leads/import`, fd).then((r) => r.data) },
+  exportUrl: (siteId: number, status?: string) => `/api/websites/${siteId}/leads/export.csv${status ? `?status=${status}` : ''}`,
+  exportBlob: (siteId: number, status?: string) => api.get<Blob>(`/websites/${siteId}/leads/export.csv`, { params: status ? { status } : {}, responseType: 'blob' }).then((r) => r.data),
 }

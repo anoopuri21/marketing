@@ -39,13 +39,15 @@ export default function DashboardPage() {
         actions={<Link to="/websites/new" className="btn-primary"><Plus className="h-4 w-4" /> Connect website</Link>}
       />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
         <Stat label="Websites" value={d.websites} hint={`${d.verified_websites} verified`} />
         <Stat label="Avg. health" value={d.avg_score ?? '–'} accent={scoreColor(d.avg_score)} hint="out of 100" />
         <Stat label="Audits run" value={d.audits_completed} />
         <Stat label="Open tasks" value={d.open_tasks} />
         <Stat label="Keywords" value={d.tracked_keywords} hint="tracked" />
         <Stat label="Reports sent" value={d.reports_sent} />
+        <Stat label="Leads" value={d.leads_total} hint={`${d.leads_active} in conversation · ${d.leads_won} won`} />
+        <Stat label="Follow-ups due" value={d.follow_ups_due} accent={d.follow_ups_due ? 'text-amber-600' : undefined} hint={d.follow_ups_due ? 'overdue outreach' : 'all caught up'} />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
