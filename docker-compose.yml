@@ -9,6 +9,7 @@ services:
       # Persisted SQLite inside the volume; switch to postgresql+asyncpg://... for scale
       DATABASE_URL: sqlite+aiosqlite:////app/backend/data/app.db
       FRONTEND_URL: http://localhost:8000
+      # Set ENVIRONMENT=production + a real SECRET_KEY + CORS_ORIGINS in backend/.env – the app refuses unsafe defaults.
     volumes:
       - rankpilot-data:/app/backend/data
     restart: unless-stopped

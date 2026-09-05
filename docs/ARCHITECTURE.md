@@ -88,5 +88,8 @@ For multi-instance deployments run the scheduler on a single instance (`SCHEDULE
 
 - Passwords hashed with bcrypt; JWT (HS256) with `SECRET_KEY` — set a long random value in production (enforced: the app refuses to start in `ENVIRONMENT=production` with the default key or `CORS_ORIGINS=*`).
 - Every website-scoped route resolves the site through the caller's workspace (`OwnedWebsite` dependency) → tenants are isolated.
-- Integration secrets are stored in the DB (JSON) and masked in API responses. Encrypt at rest (KMS / Fernet) before going multi-tenant in production.
+- Integration secrets (`Integration.config`) are **encrypted at rest** with Fernet (`core/crypto.py`, `core/types.EncryptedJSON`): rows are stored as `enc:v1:<token>`; the key is `ENCRYPTION_KEY` or, when unset, derived from `SECRET_KEY` via scrypt. Legacy plaintext rows are still readable and re-encrypted on the next save. API responses always mask secrets (`••••` + last 4 chars).
+- **Rate limiting** (`core/ratelimit.py`): in-process sliding window per client IP (honours `X-Forwarded-For` — the Docker image runs uvicorn with `--proxy-headers`). Login 10/min, register 5/5 min, lead discovery 20/h; responses are `429` with `Retry-After`. Multi-instance deployments need a shared store (Redis) — see ROADMAP.
+- Security headers on every API response (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`); `/media/*` is exempt so social networks can embed creatives.
+- The Docker image runs as an unprivileged user (`rankpilot`, uid 10001) and exposes a `HEALTHCHECK` on `/api/health`.
 - The crawler identifies itself as `RankPilotBot`, follows redirects, times out per request, and never executes JavaScript.

@@ -39,7 +39,12 @@ AI search, social, digital marketing, lead generation) on automation, with sched
 
 ## Engineering follow-ups
 
+Done: encrypted credentials at rest, per-IP rate limits, security headers, non-root Docker image + healthcheck, GitHub Actions CI template (`ci/github-actions.yml` → copy into `.github/workflows/`).
+
 - PostgreSQL migrations with Alembic (currently `create_all` for dev)
 - Background worker (Celery/RQ/arq) for large crawls; per-tenant crawl limits
+- Redis-backed rate limiter + shared cache when running more than one API replica
+- Refresh tokens, password reset and e-mail verification flows (today: 7-day access JWT only)
 - Headless-browser performance checks (Lighthouse / Core Web Vitals via PageSpeed Insights API)
+- Frontend unit tests (vitest + testing-library) – today only the jsdom smoke runner (`frontend/smoke.mjs`)
 - i18n (Hindi + English UI)

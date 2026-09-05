@@ -12,5 +12,6 @@ os.environ["OUTBOX_DIR"] = f"{_tmp}/outbox"
 os.environ["MEDIA_DIR"] = f"{_tmp}/media"
 os.environ["AI_PROVIDER"] = "none"
 os.environ["SERP_PROVIDER"] = "none"
+os.environ["RATE_LIMIT_ENABLED"] = "false"  # test_core exercises the limiter directly
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))

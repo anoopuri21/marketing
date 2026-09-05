@@ -7,14 +7,19 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser
+from app.core.ratelimit import limiter
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models import User, Workspace
 from app.schemas.all import LoginRequest, MeResponse, RegisterRequest, TokenResponse, UserOut, WorkspaceOut
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+# Brute-force protection: per client IP, sliding window (see core/ratelimit.py).
+login_limit = Depends(limiter("login", limit=10, window_seconds=60))
+register_limit = Depends(limiter("register", limit=5, window_seconds=300))
 
-@router.post("/register", response_model=TokenResponse, status_code=201)
+
+@router.post("/register", response_model=TokenResponse, status_code=201, dependencies=[register_limit])
 async def register(payload: RegisterRequest, db: DB):
     existing = (await db.execute(select(User).where(User.email == payload.email.lower()))).scalar_one_or_none()
     if existing:
@@ -37,13 +42,13 @@ async def _authenticate(db, email: str, password: str) -> User:
     return user
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenResponse, dependencies=[login_limit])
 async def login(payload: LoginRequest, db: DB):
     user = await _authenticate(db, payload.email, payload.password)
     return TokenResponse(access_token=create_access_token(user.id))
 
 
-@router.post("/token", response_model=TokenResponse, include_in_schema=False)
+@router.post("/token", response_model=TokenResponse, include_in_schema=False, dependencies=[login_limit])
 async def token(form: Annotated[OAuth2PasswordRequestForm, Depends()], db: DB):
     """OAuth2 password flow (used by the Swagger UI 'Authorize' button)."""
     user = await _authenticate(db, form.username, form.password)

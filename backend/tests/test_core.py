@@ -110,5 +110,72 @@ def test_request_id_is_propagated(client: TestClient):
     r = client.get("/api/health", headers={"X-Request-ID": "trace-abc-123"})
     assert r.status_code == 200
     assert r.headers["X-Request-ID"] == "trace-abc-123"
+    assert r.headers["X-Content-Type-Options"] == "nosniff" and r.headers["X-Frame-Options"] == "DENY"
     r = client.get("/api/health")
     assert len(r.headers["X-Request-ID"]) >= 8
+
+
+# --------------------------------------------------------------------------- #
+# credentials at rest
+# --------------------------------------------------------------------------- #
+def test_crypto_roundtrip_and_legacy():
+    from app.core import crypto
+
+    token = crypto.encrypt_json({"access_token": "EAAB-secret", "page_id": "1"})
+    assert token.startswith(crypto.PREFIX) and "EAAB-secret" not in token
+    assert crypto.decrypt_json(token) == {"access_token": "EAAB-secret", "page_id": "1"}
+    assert crypto.decrypt_json({"legacy": True}) == {"legacy": True}  # old JSON column values
+    assert crypto.decrypt_text("plain") == "plain"
+    with pytest.raises(ValueError):
+        crypto.decrypt_text(crypto.PREFIX + "not-a-token")
+
+
+def test_integration_config_is_encrypted_in_db(client: TestClient):
+    import sqlite3
+
+    from app.core.config import settings
+
+    r = client.post("/api/auth/register", json={"email": "vault@example.com", "password": "secret123", "full_name": "Vault"})
+    auth = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    sid = client.post("/api/websites", json={"url": "https://vault.example.com", "name": "Vault"}, headers=auth).json()["id"]
+    r = client.put(f"/api/websites/{sid}/social/channels", json={"platform": "facebook", "config": {"page_id": "42", "access_token": "EAAB-super-secret"}}, headers=auth)
+    assert r.status_code == 200
+    assert r.json()["config"]["access_token"].startswith("••••")  # masked in API responses
+
+    db_path = settings.database_url.split("///", 1)[1]
+    raw = sqlite3.connect(db_path).execute("SELECT config FROM integrations WHERE website_id = ?", (sid,)).fetchone()[0]
+    assert raw.startswith("enc:v1:") and "EAAB-super-secret" not in raw
+
+    # the ORM still sees plaintext and partial updates keep the secret
+    r = client.put(f"/api/websites/{sid}/social/channels", json={"platform": "facebook", "config": {"page_id": "43", "access_token": "••••••"}}, headers=auth)
+    assert r.json()["config"]["page_id"] == "43"
+    assert client.delete(f"/api/websites/{sid}", headers=auth).status_code in (200, 204)
+
+
+# --------------------------------------------------------------------------- #
+# rate limiting
+# --------------------------------------------------------------------------- #
+def test_rate_limiter_blocks_and_recovers(monkeypatch: pytest.MonkeyPatch):
+    from app.core import ratelimit
+
+    ratelimit.reset()
+    key = "login:203.0.113.9"
+    assert all(ratelimit.check(key, limit=3, window_seconds=60) is None for _ in range(3))
+    wait = ratelimit.check(key, limit=3, window_seconds=60)
+    assert wait is not None and 0 < wait <= 60
+    ratelimit.reset(key)
+    assert ratelimit.check(key, limit=3, window_seconds=60) is None
+
+
+def test_login_returns_429_when_enabled(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    from app.core import ratelimit
+    from app.core.config import settings
+
+    ratelimit.reset()
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    try:
+        codes = [client.post("/api/auth/login", json={"email": "nobody@example.com", "password": "wrong"}).status_code for _ in range(11)]
+    finally:
+        monkeypatch.setattr(settings, "rate_limit_enabled", False)
+        ratelimit.reset()
+    assert codes[:10] == [401] * 10 and codes[10] == 429

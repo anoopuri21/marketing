@@ -1,12 +1,10 @@
 """Lead finder API: discover prospects, qualify them (mini audit + pitch), manage the pipeline."""
 from __future__ import annotations
 
-import csv
-import io
 import logging
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -14,7 +12,9 @@ from sqlalchemy import select
 from app.api.deps import DB, OwnedWebsite
 from app.core.config import settings
 from app.core.errors import UpstreamError
+from app.core.ratelimit import limiter
 from app.models import Lead
+from app.services.leads import csv_io
 from app.services.leads import service as leads_service
 from app.services.leads.pitch import write_pitch
 from app.services.leads.service import (
@@ -27,7 +27,6 @@ from app.services.leads.service import (
     set_status,
     website_ctx,
 )
-from app.services.leads.sources import host_of
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/websites/{website_id}/leads", tags=["leads"])
@@ -112,7 +111,7 @@ async def campaigns(website: OwnedWebsite, db: DB):
     return [{"campaign": c, "query": q, "location": loc, "source": s} for c, q, loc, s in sorted(rows, key=lambda r: r[0], reverse=True)]
 
 
-@router.post("/discover")
+@router.post("/discover", dependencies=[Depends(limiter("lead-discover", limit=20, window_seconds=3600))])  # SerpAPI credits cost money
 async def discover(payload: DiscoverIn, website: OwnedWebsite, db: DB, background: BackgroundTasks):
     if settings.resolved_lead_provider == "none":
         raise HTTPException(400, "Lead discovery is disabled on this server (LEAD_PROVIDER=none).")
@@ -144,68 +143,19 @@ async def create_lead(payload: LeadIn, website: OwnedWebsite, db: DB, background
 @router.post("/import")
 async def import_csv(website: OwnedWebsite, db: DB, background: BackgroundTasks, file: UploadFile, qualify: bool = True):
     """CSV with headers (any order, case-insensitive): company, website, phone, email, contact, category, location, address, notes."""
-    raw = await file.read()
-    if len(raw) > 2 * 1024 * 1024:
-        raise HTTPException(413, "CSV larger than 2 MB")
-    text = raw.decode("utf-8-sig", errors="ignore")
-    reader = csv.DictReader(io.StringIO(text))
-    if not reader.fieldnames:
-        raise HTTPException(400, "CSV has no header row")
-    alias = {"company": "company", "name": "company", "business": "company", "website": "website_url", "url": "website_url", "site": "website_url",
-             "phone": "phone", "mobile": "phone", "email": "email", "contact": "contact_name", "contact_name": "contact_name", "person": "contact_name",
-             "category": "category", "type": "category", "industry": "category", "location": "location", "city": "location",
-             "address": "address", "notes": "notes", "note": "notes"}
-    existing_hosts = {host_of(l.website_url) for l in (await db.execute(select(Lead).where(Lead.website_id == website.id))).scalars().all() if l.website_url}
-    created: list[Lead] = []
-    skipped = 0
-    for row in reader:
-        data: dict[str, str] = {}
-        for k, v in row.items():
-            key = alias.get((k or "").strip().lower().replace(" ", "_"))
-            if key and v:
-                data[key] = str(v).strip()
-        if not data.get("company") and not data.get("website_url"):
-            skipped += 1
-            continue
-        url = normalize_url(data.get("website_url", ""))
-        h = host_of(url)
-        if h and h in existing_hosts:
-            skipped += 1
-            continue
-        if h:
-            existing_hosts.add(h)
-        lead = Lead(website_id=website.id, company=data.get("company") or h, website_url=url, phone=data.get("phone", ""), email=data.get("email", ""),
-                    contact_name=data.get("contact_name", ""), category=data.get("category", ""), location=data.get("location", ""),
-                    address=data.get("address", ""), notes=data.get("notes", ""), source="csv", status="new", score=0, audit={}, pitch={}, tags=[],
-                    activity=[{"at": datetime.now(UTC).isoformat(), "kind": "created", "note": f"Imported from {file.filename}"}])
-        db.add(lead)
-        created.append(lead)
-        if len(created) >= 500:
-            break
+    result = await csv_io.import_leads(db, website.id, await file.read(), source_label=file.filename or "CSV")
     await db.commit()
-    for l in created:
-        await db.refresh(l)
-    if qualify and created:
-        background.add_task(qualify_leads_in_background, [l.id for l in created], website.id)
-    return {"created": len(created), "skipped": skipped, "leads": [lead_to_dict(l) for l in created]}
+    for lead in result.created:
+        await db.refresh(lead)
+    if qualify and result.created:
+        background.add_task(qualify_leads_in_background, [lead.id for lead in result.created], website.id)
+    return {"created": len(result.created), "skipped": result.skipped, "leads": [lead_to_dict(lead) for lead in result.created]}
 
 
 @router.get("/export.csv")
 async def export_csv(website: OwnedWebsite, db: DB, status: str | None = None):
-    stmt = select(Lead).where(Lead.website_id == website.id)
-    if status:
-        stmt = stmt.where(Lead.status.in_(status.split(",")))
-    rows = (await db.execute(stmt.order_by(Lead.score.desc()))).scalars().all()
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(["company", "website", "phone", "email", "contact", "category", "location", "address", "rating", "reviews", "status", "opportunity_score",
-                "website_score", "top_gaps", "pitch_angle", "source", "created_at"])
-    for l in rows:
-        gaps = "; ".join(g.get("label", "") for g in (l.audit or {}).get("gaps", [])[:3])
-        w.writerow([l.company, l.website_url, l.phone, l.email, l.contact_name, l.category, l.location, l.address, l.rating, l.reviews, l.status,
-                    l.score, l.website_score, gaps, (l.pitch or {}).get("angle", ""), l.source, l.created_at.isoformat() if l.created_at else ""])
-    buf.seek(0)
-    return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
+    leads = await leads_service.list_leads(db, website.id, statuses=status.split(",") if status else None, sort="score", limit=10_000)
+    return StreamingResponse(iter([csv_io.export_rows(leads)]), media_type="text/csv",
                              headers={"Content-Disposition": f'attachment; filename="leads-{website.domain}.csv"'})
 
 

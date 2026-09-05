@@ -23,7 +23,11 @@ class Settings(BaseSettings):
     app_name: str = "RankPilot"
     environment: Literal["development", "production", "test"] = "development"
     secret_key: str = INSECURE_SECRET_KEY  # MUST be overridden in production (enforced below)
+    # Optional dedicated key for credentials-at-rest (Fernet, urlsafe base64 32 bytes). Defaults to a key
+    # derived from SECRET_KEY – set this if you ever want to rotate SECRET_KEY without re-connecting integrations.
+    encryption_key: str = ""
     log_level: str = "INFO"
+    rate_limit_enabled: bool = True  # login/register/discovery throttles (per client IP, in-process)
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
     public_base_url: str = "http://localhost:8000"
     frontend_url: str = "http://localhost:5173"

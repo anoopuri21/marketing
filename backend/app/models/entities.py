@@ -20,10 +20,12 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.core.time import aware, utcnow  # re-exported for backwards compatibility
+from app.core.types import EncryptedJSON
 
 __all__ = ["aware", "utcnow"]
 
@@ -282,7 +284,7 @@ class ReportRun(TimestampMixin, Base):
 
 
 # --------------------------------------------------------------------------- #
-# Integrations (Search Console, GA4, social accounts...) - credentials stored as JSON
+# Integrations (Search Console, GA4, social accounts...) - credentials encrypted at rest
 # --------------------------------------------------------------------------- #
 class Integration(TimestampMixin, Base):
     __tablename__ = "integrations"
@@ -292,7 +294,7 @@ class Integration(TimestampMixin, Base):
     website_id: Mapped[int] = mapped_column(ForeignKey("websites.id", ondelete="CASCADE"), index=True)
     provider: Mapped[str] = mapped_column(String(32))  # google_search_console|ga4|facebook|instagram|linkedin|x
     status: Mapped[str] = mapped_column(String(16), default="disconnected")  # connected|disconnected|error
-    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    config: Mapped[dict] = mapped_column(MutableDict.as_mutable(EncryptedJSON()), default=dict)  # Fernet-encrypted (core/crypto.py)
     connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str] = mapped_column(Text, default="")

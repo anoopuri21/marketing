@@ -41,6 +41,14 @@ def configure_logging(level: str = "INFO") -> None:
     root._rankpilot_configured = True  # type: ignore[attr-defined]
 
 
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+}
+
+
 async def request_id_middleware(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     rid = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
     token = request_id_var.set(rid)
@@ -50,6 +58,9 @@ async def request_id_middleware(request: Request, call_next: Callable[[Request],
     finally:
         request_id_var.reset(token)
     response.headers["X-Request-ID"] = rid
+    if not request.url.path.startswith("/media/"):  # social networks embed creatives → no frame/referrer restrictions there
+        for header, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(header, value)
     elapsed_ms = (time.perf_counter() - started) * 1000
     if elapsed_ms > 2000:  # slow-request breadcrumb
         logging.getLogger("rankpilot.http").warning("slow request %s %s took %.0f ms", request.method, request.url.path, elapsed_ms)

@@ -104,7 +104,7 @@ seven categories, **capped when critical issues remain** so a broken site can ne
 ## Testing & code quality
 
 ```bash
-cd backend && .venv/bin/python -m pytest -q     # backend (no network needed) – 58 tests, 0 warnings
+cd backend && .venv/bin/python -m pytest -q     # backend (no network needed) – 62 tests, 0 warnings
 cd backend && .venv/bin/ruff check app tests     # lint (E,F,W,I,B,UP,SIM,RUF,ASYNC,PL) – 0 findings
 cd backend && .venv/bin/mypy app                 # static types – 0 errors
 cd frontend && npm run lint                      # oxlint incl. React compiler rules – 0 warnings
@@ -112,6 +112,7 @@ cd frontend && npx tsc -b && npm run build       # type-check + production build
 ```
 
 `ruff` and `mypy` are installed with `pip install ruff mypy` into `backend/.venv` (not part of the runtime requirements).
+A ready-made GitHub Actions workflow running the same gates plus a Docker build lives in `ci/github-actions.yml` — copy it to `.github/workflows/ci.yml` to enable CI.
 
 ## Production deployment
 
@@ -121,6 +122,20 @@ docker compose up -d --build     # API + built frontend served by the API on :80
 
 Or run `uvicorn app.main:app` behind any reverse proxy and serve `frontend/dist` (the API serves it
 automatically when the folder exists). Use PostgreSQL + a persistent volume for `backend/data`.
+
+Production checklist (`backend/.env`):
+
+| Variable | Why |
+| --- | --- |
+| `ENVIRONMENT=production` | Turns on the safety guard (refuses default `SECRET_KEY` / `CORS_ORIGINS=*`) |
+| `SECRET_KEY` (≥ 32 random chars) | Signs JWTs; also derives the credential-encryption key when `ENCRYPTION_KEY` is empty |
+| `ENCRYPTION_KEY` (Fernet key) | Recommended – lets you rotate `SECRET_KEY` without losing stored integration credentials |
+| `CORS_ORIGINS=https://app.example.com` | Exact browser origins |
+| `PUBLIC_BASE_URL` / `FRONTEND_URL` | Absolute links in e-mails and social posts |
+| `SMTP_*` | Scheduled report delivery (otherwise reports land in `data/outbox/`) |
+
+The image runs as a non-root user, exposes `/api/health` as its Docker `HEALTHCHECK`, and trusts `X-Forwarded-For`
+from the reverse proxy for per-IP rate limiting.
 
 ## Connecting Google Search Console / GA4 (per website)
 
@@ -134,7 +149,7 @@ managing many client sites. One-time setup (~2 minutes), guided inside the app (
 4. Paste/upload the JSON in the app. The property is auto-detected (domain or URL-prefix); the first sync runs
    immediately and then daily (`INTEGRATION_SYNC_INTERVAL_HOURS`) plus right before every scheduled report.
 
-Keys are stored per website and never returned by the API (only the service-account email is shown).
+Keys are stored per website, encrypted at rest, and never returned by the API (only the service-account email is shown).
 
 ## Social publishing & creatives (per website)
 
